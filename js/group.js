@@ -266,6 +266,26 @@ export async function sharePlanToGroup(plan) {
 }
 export function hasGroup() { return !!active; }
 
+/** submit everyone's scores (from the scorecard / OCR) to the group's nearest competition */
+export async function submitPlayersToComp(players) {
+  if (!active) { toast('先に「仲間」タブでグループを作ってください'); return; }
+  const r = room();
+  const today = new Date().toISOString().slice(0, 10);
+  const comps = Object.values(r.comps || {}).sort((a, b) => Math.abs(new Date(a.date) - new Date(today)) - Math.abs(new Date(b.date) - new Date(today)));
+  const comp = comps[0];
+  if (!comp) { toast('このグループにコンペがありません。「仲間」→「コンペ」で作れます'); return; }
+  let n = 0;
+  try {
+    for (const p of players) {
+      if (!p.holes?.some((x) => x)) continue;
+      const member = p.me ? me() : { id: 'n:' + p.name, name: p.name };
+      await send(active, { type: 'score', compId: comp.id, member, holes: p.holes.map((x) => x || 0) });
+      n++;
+    }
+    toast(`「${comp.title}」に${n}人分のスコアを提出しました`);
+  } catch (e) { toast(e.message); }
+}
+
 /** send this course's registered holes and notes to the active group */
 export async function shareCourseIntel() {
   const c = state.course;

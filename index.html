@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/features.css">
 <link rel="stylesheet" href="css/v2.css">
+<link rel="stylesheet" href="css/v3.css">
 </head>
 <body>
 <header class="topbar">
@@ -134,6 +135,12 @@
   </div>
 </section>
 
+<!-- ============ MEMORY (one round) ============ -->
+<section class="tab" id="tab-memory" data-tab="memory">
+  <div class="page-head row-between"><h1 id="memTitle">思い出</h1><button class="btn small" data-goto="score">スコアに戻る</button></div>
+  <div id="memoryBody" class="memory"></div>
+</section>
+
 <!-- ============ COURSE BOOK ============ -->
 <section class="tab" id="tab-book" data-tab="book">
   <div class="page-head row-between"><div><h1 id="bookTitle">攻略ブック</h1><p class="muted" id="bookMeta"></p></div><button class="btn small" data-goto="navi">ナビに戻る</button></div>
@@ -194,6 +201,19 @@
   <div class="btn-row">
     <button class="btn primary" id="btnSaveRound">ラウンドを保存</button>
     <button class="btn" id="btnShareRound">スコアを共有</button>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>今日のメンバー</h2><label class="btn small primary file-btn">スコアカードを読み取る<input type="file" id="ocrFile" accept="image/*" capture="environment"></label></div>
+    <p class="muted" id="playersEmpty">紙のスコアカードを撮影すると、全員の打数を自動で読み取ります（手書きOK・AIキーがあると高精度）。手入力もできます。</p>
+    <div class="muted" id="ocrStatus"></div>
+    <div class="table-wrap players-wrap"><table class="players" id="playersTable"></table></div>
+    <div class="btn-row tight"><button class="btn small" id="btnAddPlayer">メンバーを追加</button><button class="btn small" id="btnPlayersToComp">全員のスコアをコンペに提出</button></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>今日の思い出</h2><label class="btn small file-btn">写真を追加<input type="file" id="memPhotos" accept="image/*" multiple></label></div>
+    <div class="mem-grid" id="memGrid"></div>
+    <textarea id="memText" rows="3" placeholder="今日のひとこと（ナイスショット、名場面、次の課題…）" aria-label="今日のひとこと"></textarea>
+    <div class="btn-row"><button class="btn" id="btnMemCard">思い出カードを作って共有</button></div>
   </div>
   <h2 class="sec-title">過去のラウンド</h2>
   <div id="roundHistory" class="history"></div>
@@ -545,6 +565,7 @@
   <button class="btn small" id="btnInstallClose">閉じる</button>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div class="photo-viewer" id="photoViewer" hidden><img id="photoViewerImg" alt=""><button class="btn small" id="memClose">閉じる</button></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script type="module" src="js/app.js"></script>

@@ -3,6 +3,7 @@ import { state, save, exportBundle, importBundle, DEFAULT_CLUBS } from './store.
 import { initNavi, onNaviShown, loadCourse, refreshNavi, fillShotClubs, applyImagery } from './navi.js';
 import { openBook } from './coursebook.js';
 import { initSwing } from './swing.js';
+import { initMemory, openMemory } from './memory.js';
 import { initCourses } from './courses.js';
 import { initScore, syncCourse } from './score.js';
 import { initTracer } from './tracer.js';
@@ -11,8 +12,8 @@ import { initAnalysis, renderAnalysis, restoreCoach } from './analysis.js';
 import { initWeather, loadForecast } from './weather.js';
 import { initGroup, onGroupShown, shareCourseIntel } from './group.js';
 
-const TABS = ['navi', 'score', 'video', 'weather', 'group', 'menu', 'course', 'booking', 'analysis', 'settings', 'book'];
-const PARENT = { course: 'menu', booking: 'menu', analysis: 'menu', settings: 'menu', book: 'navi' };
+const TABS = ['navi', 'score', 'video', 'weather', 'group', 'menu', 'course', 'booking', 'analysis', 'settings', 'book', 'memory'];
+const PARENT = { course: 'menu', booking: 'menu', analysis: 'menu', settings: 'menu', book: 'navi', memory: 'score' };
 
 function goto(tab) {
   if (!TABS.includes(tab)) tab = 'navi';
@@ -147,6 +148,8 @@ function boot() {
   window.addEventListener('course-picked', async () => { courseChip(); syncCourse(); goto('navi'); await loadCourse(false); });
   window.addEventListener('goto-tab', (e) => goto(e.detail));
   initScore(() => renderAnalysis());
+  initMemory();
+  window.addEventListener('open-memory', (e) => { goto('memory'); openMemory(e.detail); });
   initTracer();
   initSwing();
   initBooking();

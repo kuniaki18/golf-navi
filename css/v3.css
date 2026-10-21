@@ -1,0 +1,33 @@
+/* ---------- today's members ---------- */
+.players-wrap { box-shadow: none; border: 1px solid var(--line); }
+table.players th, table.players td { padding: 4px 2px; }
+table.players th.nm, table.players td.nm { position: sticky; left: 0; background: var(--surface); z-index: 1; text-align: left; min-width: 92px; padding-left: 8px; }
+table.players td input { width: 30px; min-height: 32px; padding: 2px; text-align: center; font-size: .9rem; border-radius: 6px; font-variant-numeric: tabular-nums; }
+table.players td.nm input { width: 84px; text-align: left; padding: 2px 6px; }
+table.players .me-row td { background: var(--surface-2); font-weight: 700; }
+table.players .me-row td.nm { background: var(--surface-2); }
+table.players .warn-row td { box-shadow: inset 0 -2px 0 var(--danger); }
+table.players td.acts { display: flex; gap: 4px; padding: 4px; }
+table.players td.acts .btn { min-height: 30px; padding: 0 8px; }
+
+/* ---------- memories ---------- */
+.mem-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.mem-grid > p { grid-column: 1 / -1; margin: 0; }
+.mem-ph { position: relative; }
+.mem-ph img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; display: block; cursor: zoom-in; }
+.mem-del { position: absolute; top: 4px; right: 4px; min-width: 26px; height: 26px; border-radius: 13px; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: .8rem; padding: 0 6px; }
+.memory { display: flex; flex-direction: column; gap: 12px; }
+.memory > p { margin: 0; }
+.mem-hero img { width: 100%; max-height: 60vh; object-fit: cover; border-radius: var(--r); display: block; }
+.mem-rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mem-rank li { display: grid; grid-template-columns: 32px 1fr auto; gap: 0 10px; align-items: baseline; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); }
+.mem-rank li.me { outline: 2px solid var(--flag); }
+.mem-rank .rk { font: 700 1.4rem/1 var(--display); color: var(--muted); grid-row: span 2; }
+.mem-rank li:first-child .rk { color: var(--flag); }
+.mem-rank .sc { font: 700 1.8rem/1 var(--display); grid-row: span 2; align-self: center; }
+.mem-rank .muted { grid-column: 2; font-size: .75rem; }
+.mem-note { white-space: pre-wrap; margin: 0; }
+.mem-gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mem-gallery img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; cursor: zoom-in; }
+.photo-viewer { position: fixed; inset: 0; z-index: 1500; background: rgba(0,0,0,.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px)); }
+.photo-viewer img { max-width: 100%; max-height: 85vh; object-fit: contain; border-radius: 8px; }
