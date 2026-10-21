@@ -42,7 +42,14 @@
       <div class="hole-meta" id="holeMeta">PAR - · - y</div>
     </div>
     <button class="step" id="holeNext" aria-label="次のホール">›</button>
-    <div class="hole-side"><button class="set-btn" id="setBtn" hidden>コースA</button><label class="auto-toggle"><input type="checkbox" id="autoHole" checked> 自動</label></div>
+    <div class="hole-side"><button class="set-btn" id="setBtn" hidden>コースA</button><button class="set-btn alt" id="btnRenumber" hidden>番号修正</button><label class="auto-toggle"><input type="checkbox" id="autoHole" checked> 自動</label></div>
+  </div>
+
+  <div class="card renumber" id="renumberPanel" hidden>
+    <div class="card-head"><h2>このホールの番号を直す</h2><button class="btn small" id="rnClose">閉じる</button></div>
+    <p class="muted">自動推定のホール番号が違うときは、正しいコースと番号を選んでください。直した内容は保存され、「みんなの地図」にも反映されます。</p>
+    <div class="form-grid"><label>コース<select id="rnSet"></select></label><label>番号<select id="rnNo"></select></label></div>
+    <div class="btn-row"><button class="btn primary" id="rnSave">この番号にする</button><button class="btn" id="rnHide">このホールを隠す（練習グリーン等）</button></div>
   </div>
 
   <div class="view-wrap">

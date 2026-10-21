@@ -84,6 +84,10 @@ export function initNavi() {
   $('#btnGreenRead').onclick = () => { const h = curHole(); if (h) { try { const c = JSON.parse(localStorage.getItem('golfnavi:greens:v1') || '{}'); delete c[`${cid()}:${h.key}`]; localStorage.setItem('golfnavi:greens:v1', JSON.stringify(c)); } catch {} } readGreen(false); };
   startCompass();
   initQuickScore();
+  $('#btnRenumber').onclick = openRenumber;
+  $('#rnClose').onclick = () => ($('#renumberPanel').hidden = true);
+  $('#rnSave').onclick = applyRenumber;
+  $('#rnHide').onclick = hideHole;
   fillShotClubs();
   renderShotLog();
   startGPS();
@@ -331,24 +335,30 @@ export async function loadCourse(force) {
     }
   }
   communityData = await communityHoles(c.id).catch(() => ({}));
+  scorecard = null;
+  try { const { bundledCourses } = await import('./osm.js'); const b = (await bundledCourses()).find((x) => x.id === (c.osmId || c.id)); if (b?.scorecard) scorecard = await (await fetch(`data/sc/${b.id}.json`)).json(); } catch {}
   rebuild(true);
   try { wx = await weather(c.lat, c.lon); render(); } catch {}
 }
 
 let allHoles = [];
+let scorecard = null;
+const courseName = (i) => (scorecard?.courses?.[i]?.name ? `${scorecard.courses[i].name}コース` : setLabel(i));
 let communityData = {};
 const activeSet = () => (cid() && state.ui.holeSet?.[cid()]) || 0;
 function rebuild(first) {
   const keep = curHole()?.key ?? state.ui.holeKey;
-  allHoles = buildHoles(features, { ...communityData, ...userHoles() });
+  allHoles = buildHoles(features, { ...(features?.estHoles || {}), ...communityData, ...userHoles() });
+  // official scorecard: par and yardage by course / hole number
+  for (const h of allHoles) { const sc = scorecard?.courses?.[h.set || 0]?.holes?.[h.no - 1]; if (sc) { h.par = sc.par; h.parEst = false; h.officialY = sc.yd; } }
   const sets = [...new Set(allHoles.map((h) => h.set || 0))].sort((a, b) => a - b);
   if (!sets.includes(activeSet())) setSet(0, false);
   holes = allHoles.filter((h) => (h.set || 0) === activeSet());
   holeIdx = Math.max(0, holes.findIndex((h) => h.key === keep));
   const btn = $('#setBtn');
   btn.hidden = sets.length < 2;
-  btn.textContent = setLabel(activeSet());
-  btn.onclick = () => { setSet((activeSet() + 1) % sets.length); state.ui.holeKey = null; rebuild(); toast(`${setLabel(activeSet())}に切り替えました`); };
+  btn.textContent = courseName(activeSet());
+  btn.onclick = () => { setSet((activeSet() + 1) % sets.length); state.ui.holeKey = null; rebuild(); toast(`${courseName(activeSet())}に切り替えました`); };
   renderCourseLayer();
   gotoHole(holeIdx, first || true);
 }
@@ -382,8 +392,9 @@ export function gotoHole(i, fit) {
   target = null;
   $('#holeNo').textContent = h.no > 100 ? '?' : h.no;
   const lenY = h.lengthM ? m2y(h.lengthM) : null;
-  $('#holeMeta').textContent = `PAR ${h.par ?? '-'}${h.parEst ? '（推定）' : ''} ·${lenY ? fmt(lenY) + ul() : '距離データなし'}${h.hcp ? ' · HDCP ' + h.hcp : ''}`;
-  $('#holeSrc').textContent = { osm: '', user: '登録済み', learned: '自動学習', community: 'みんなの地図', none: '未登録' }[h.source] || '';
+  $('#holeMeta').textContent = `PAR ${h.par ?? '-'}${h.parEst ? '（推定）' : ''} · ${h.officialY ? `公式 ${fmt(h.officialY)}${ul()}` : lenY ? fmt(lenY) + ul() : '距離データなし'}${h.hcp ? ' · HDCP ' + h.hcp : ''}`;
+  $('#btnRenumber').hidden = !['est', 'user', 'community', 'learned'].includes(h.source);
+  $('#holeSrc').textContent = { osm: '', user: '登録済み', learned: '自動学習', community: 'みんなの地図', est: '自動推定', none: '未登録' }[h.source] || '';
   $('#holeSrc').className = 'src-badge ' + h.source;
   $('#holeNote').value = cid() ? getNote(cid(), h.key) : '';
   $('#noteSaved').textContent = '';
@@ -594,7 +605,7 @@ function recordShot() {
 }
 /** first full shot on an unmapped hole = tee, putting position = green */
 function learn(h, club) {
-  if (!h || !cid() || h.source === 'osm' || h.source === 'community') return;
+  if (!h || !cid() || h.source === 'osm' || h.source === 'community' || h.source === 'est') return;
   const u = userHoles(); const cur = u[h.key] || {};
   if (cur.learned === false) return; // user-mapped: don't overwrite
   const shotsHere = (state.shots || []).filter((s) => s.courseId === cid() && s.hole === h.no && s.date?.slice(0, 10) === new Date().toISOString().slice(0, 10));
@@ -778,4 +789,45 @@ async function saveOffline() {
   await Promise.all(Array.from({ length: 6 }, worker));
   try { await fetch(`data/c/${state.course.osmId || state.course.id}.json`); } catch {}
   st.textContent = `保存しました（${done - fail}枚）。電波がなくても、このコースのホールビューが表示できます。`;
+}
+
+// ---------------- renumber estimated / registered holes ----------------
+function openRenumber() {
+  const h = curHole(); if (!h) return;
+  const nCourses = Math.max(scorecard?.courses?.length || 0, ...allHoles.map((x) => (x.set || 0) + 1), 1);
+  const setCount = Math.max(nCourses, scorecard ? scorecard.courses.length : 3);
+  $('#rnSet').innerHTML = Array.from({ length: setCount }, (_, i) => `<option value="${i}">${esc(courseName(i))}</option>`).join('');
+  $('#rnSet').value = String(h.set || 0);
+  const fillNo = () => {
+    const n = scorecard?.courses?.[Number($('#rnSet').value)]?.holes?.length || 18;
+    $('#rnNo').innerHTML = Array.from({ length: n }, (_, i) => { const sc = scorecard?.courses?.[Number($('#rnSet').value)]?.holes?.[i]; return `<option value="${i + 1}">${i + 1}番${sc ? `（PAR${sc.par} ${sc.yd}y）` : ''}</option>`; }).join('');
+    $('#rnNo').value = String(Math.min(h.no, n));
+  };
+  $('#rnSet').onchange = fillNo; fillNo();
+  $('#renumberPanel').hidden = false;
+  $('#renumberPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function applyRenumber() {
+  const h = curHole(); if (!h) return;
+  const set = Number($('#rnSet').value), n = Number($('#rnNo').value);
+  const newKey = set ? `${n}-${set + 1}` : String(n);
+  const u = userHoles();
+  const mine = { tee: h.tee, green: h.center, mid: h.line?.length > 2 ? h.line[1] : null, par: scorecard?.courses?.[set]?.holes?.[n - 1]?.par || h.par || null, learned: false, updatedAt: Date.now() };
+  if (newKey !== h.key) {
+    // swap: whatever was at the new number moves to this hole's old number
+    const displaced = allHoles.find((x) => x.key === newKey && x.center);
+    u[h.key] = displaced ? { tee: displaced.tee, green: displaced.center, mid: displaced.line?.length > 2 ? displaced.line[1] : null, par: null, learned: false, updatedAt: Date.now() } : { hidden: true, updatedAt: Date.now() };
+  }
+  u[newKey] = mine;
+  save('holes');
+  if (mine.tee && mine.green) submitHole(state.course, newKey, mine);
+  $('#renumberPanel').hidden = true;
+  setSet(set); state.ui.holeKey = newKey;
+  rebuild();
+  toast(`${courseName(set)} ${n}番にしました`);
+}
+function hideHole() {
+  const h = curHole(); if (!h) return;
+  userHoles()[h.key] = { hidden: true, updatedAt: Date.now() }; save('holes');
+  $('#renumberPanel').hidden = true; rebuild(); toast('このホールを隠しました');
 }

@@ -54,3 +54,6 @@
 .green-read { display: flex; flex-direction: column; gap: 8px; }
 .green-read p { margin: 0; }
 .sel { user-select: all; font-family: var(--mono); }
+.src-badge.est, .src-badge.community { background: var(--surface-2); color: var(--green); border: 1px solid var(--green); }
+.set-btn.alt { background: var(--surface-2); color: var(--green); }
+.renumber { border: 2px solid var(--flag); }

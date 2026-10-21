@@ -35,7 +35,7 @@ export async function bundledCourses() {
     bundled = j.courses.map((c) => ({
       id: c.id, name: c.n, kana: c.k || '', lat: c.a, lon: c.o, bounds: c.b || null, holes: c.h || null,
       website: c.w || '', phone: c.ph || '', pref: c.p || '', operator: c.op || '',
-      hasDetail: !!c.d, holesMapped: c.hm || 0, greensMapped: c.gm || 0, private: c.ac === 'private', source: 'osm', approx: !!c.ap, unnamed: !!c.un, address: c.ad ? c.p + c.ad.replace(c.p, '') : c.p || '',
+      hasDetail: !!c.d, holesMapped: c.hm || 0, holesEst: c.em || 0, scorecard: !!c.sc, greensMapped: c.gm || 0, private: c.ac === 'private', source: 'osm', approx: !!c.ap, unnamed: !!c.un, address: c.ad ? c.p + c.ad.replace(c.p, '') : c.p || '',
       _s: searchKey(c.n + ' ' + (c.k || '') + ' ' + (c.op || '') + ' ' + (c.ad || '') + ' ' + (c.p || '')),
     }));
   } catch { bundled = []; }
@@ -137,6 +137,9 @@ export function parseCompact(j) {
     for (const rings of arr || []) { const x = poly(rings, k); if (x.c) f[k].push(x); }
   }
   for (const p of j.pins || []) { const q = pts(p); if (q.length) f.pins.push({ id: `p${seq++}`, pts: q, c: q[0] }); }
+  // estimated holes (tools/auto-holes.mjs): used like registered holes, lowest priority
+  f.estHoles = {};
+  for (const h of j.est || []) f.estHoles[h.k] = { tee: h.tee, mid: h.mid, green: h.green, par: h.par, est: true };
   return f;
 }
 
@@ -192,22 +195,26 @@ export function buildHoles(f, userHoles = {}) {
 
   // user / learned holes
   const have = new Set(holes.map((h) => h.key));
-  const maxNo = Math.max(18, ...Object.keys(userHoles).map((k) => parseInt(k, 10)).filter(Number.isFinite));
   const out = [...holes];
-  for (let n = 1; n <= maxNo; n++) {
-    const key = String(n);
+  // keys: "n" (course A) or "n-s" (course s); placeholders 1–18 only when nothing at all is mapped
+  const keys = new Set(Object.keys(userHoles));
+  if (!holes.length && !Object.values(userHoles).some((u) => u?.est)) for (let n = 1; n <= 18; n++) keys.add(String(n));
+  for (const key of keys) {
+    const m = /^(\d+)(?:-(\d+))?$/.exec(key); if (!m) continue;
+    const n = Number(m[1]), set = m[2] ? Number(m[2]) - 1 : 0;
     const u = userHoles[key];
+    if (u?.hidden) continue;
     if (have.has(key)) {
-      // user may correct par or pin on a mapped hole
+      // user may correct par on a mapped hole
       if (u?.par) { const h = out.find((x) => x.key === key); h.par = u.par; }
       continue;
     }
     if (u?.tee || u?.green) {
       const line = [u.tee, ...(u.mid ? [u.mid] : []), u.green].filter(Boolean);
       const green = u.green ? nearestGreen(f, u.green, 40) : null;
-      out.push({ no: n, key, par: u.par || null, line: line.length >= 2 ? line : [], tee: u.tee || null, green, center: u.green || null, lengthM: line.length >= 2 ? lineLength(line) : 0, source: u.learned ? 'learned' : u.community ? 'community' : 'user' });
-    } else if (!holes.length || n <= 18) {
-      out.push({ no: n, key, par: u?.par || null, line: [], tee: null, green: null, center: null, lengthM: 0, source: 'none' });
+      out.push({ no: n, key, set, par: u.par || null, line: line.length >= 2 ? line : [], tee: u.tee || null, green, center: u.green || null, lengthM: line.length >= 2 ? lineLength(line) : 0, source: u.learned ? 'learned' : u.community ? 'community' : u.est ? 'est' : 'user' });
+    } else {
+      out.push({ no: n, key, set, par: u?.par || null, line: [], tee: null, green: null, center: null, lengthM: 0, source: 'none' });
     }
   }
   // estimate par from length when the data has none (shown as 推定)
