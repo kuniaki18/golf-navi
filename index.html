@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#123524">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Golf Navi">
+<meta name="description" content="GPS距離計測・番手アドバイス・コース攻略・スコア記録・ショットトレーサー・最安予約カレンダーをひとつにしたゴルフアプリ">
+<title>Golf Navi</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/features.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 21V3l10 4-10 4"/><ellipse cx="9" cy="21" rx="6" ry="1.4"/></svg><span>Golf Navi</span></div>
+  <button class="course-chip" id="courseChip" data-goto="course">コース未選択</button>
+  <button class="icon-btn" id="btnSun" aria-label="屋外モード" aria-pressed="false" title="屋外モード（直射日光でも見やすく）"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  <button class="icon-btn" id="openSettings" aria-label="設定"><svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
+</header>
+
+<main id="main">
+
+<!-- ============ NAVI (GPS) ============ -->
+<section class="tab" id="tab-navi" data-tab="navi">
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="map-tools">
+      <button class="map-btn" id="btnLocate" title="現在地へ">◎</button>
+      <button class="map-btn" id="btnMapMode" title="タップの動作">目標</button>
+    </div>
+    <div class="gps-status" id="gpsStatus">GPS 取得待ち</div>
+  </div>
+
+  <div class="hole-bar">
+    <button class="step" id="holePrev" aria-label="前のホール">‹</button>
+    <div class="hole-info">
+      <div class="hole-no">HOLE <b id="holeNo">1</b></div>
+      <div class="hole-meta" id="holeMeta">PAR - · - y</div>
+    </div>
+    <button class="step" id="holeNext" aria-label="次のホール">›</button>
+    <label class="auto-toggle"><input type="checkbox" id="autoHole" checked> 自動</label>
+  </div>
+
+  <div class="yardage">
+    <div class="yd-side"><span class="yd-label">手前</span><span class="yd-num" id="ydFront">---</span></div>
+    <div class="yd-main"><span class="yd-label">グリーンセンター</span><span class="yd-big" id="ydCenter">---</span><span class="yd-unit" id="ydUnit">yd</span></div>
+    <div class="yd-side"><span class="yd-label">奥</span><span class="yd-num" id="ydBack">---</span></div>
+  </div>
+  <div class="target-line" id="targetLine" hidden></div>
+
+  <div class="card club-card">
+    <div class="card-head"><h2>番手アドバイス</h2><span class="pill" id="windPill">風 --</span></div>
+    <div class="club-reco">
+      <div class="club-name" id="clubName">--</div>
+      <div class="club-detail" id="clubDetail">現在地を取得するとおすすめ番手を表示します</div>
+    </div>
+    <div class="adj-grid">
+      <label>ライ
+        <select id="lie">
+          <option value="fairway">フェアウェイ</option>
+          <option value="first">ファーストカット</option>
+          <option value="rough">ラフ</option>
+          <option value="deep">深いラフ</option>
+          <option value="bunker">フェアウェイバンカー</option>
+          <option value="tee">ティーアップ</option>
+        </select>
+      </label>
+      <label>風 (m/s)
+        <select id="windMode">
+          <option value="auto">自動(気象データ)</option>
+          <option value="0">無風</option>
+          <option value="3">向かい 3m</option>
+          <option value="6">向かい 6m</option>
+          <option value="-3">追い 3m</option>
+          <option value="-6">追い 6m</option>
+        </select>
+      </label>
+      <label>高低差 (m)
+        <input type="number" id="elevManual" placeholder="自動" inputmode="numeric">
+      </label>
+    </div>
+    <div class="adj-break" id="adjBreak"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>ショット記録</h2><span class="muted" id="shotHint">打つ地点で押す</span></div>
+    <div class="shot-row">
+      <select id="shotClub" aria-label="使用クラブ"></select>
+      <button class="btn primary" id="btnShot">ここから打つ</button>
+      <button class="btn" id="btnShotEnd">ボール地点</button>
+    </div>
+    <div class="shot-log" id="shotLog"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>このホールの攻略</h2><button class="btn small" id="btnAiHole">AIで詳しく</button></div>
+    <ul class="tips" id="holeTips"><li class="muted">コースを選ぶと、OpenStreetMapのコースデータからハザードとレイアウトを読み取って攻略法を作ります。</li></ul>
+    <div class="hazards" id="hazardList"></div>
+    <div class="ai-out" id="aiHoleOut" hidden></div>
+    <details class="notes">
+      <summary>マイ攻略メモ（ホールごとに更新できます）</summary>
+      <textarea id="holeNote" rows="3" placeholder="例: 2打目は左の木の右を狙う。グリーンは奥から速い"></textarea>
+      <div class="row-end"><span class="muted" id="noteSaved"></span></div>
+    </details>
+  </div>
+
+  <div class="card tools-card">
+    <button class="btn" id="btnSetGreen">グリーン位置を手動設定</button>
+    <button class="btn" id="btnReloadCourse">コースデータ再取得</button>
+  </div>
+</section>
+
+<!-- ============ COURSE ============ -->
+<section class="tab" id="tab-course" data-tab="course">
+  <div class="page-head"><h1>全国のゴルフ場</h1><p class="muted">OpenStreetMapの全国データから検索します。楽天GORAのキーを設定すると料金や評価も表示します。</p></div>
+  <div class="card">
+    <div class="form-grid">
+      <label>都道府県<select id="prefSel"></select></label>
+      <label>キーワード<input id="courseKw" placeholder="例: カントリー / 霞ヶ関" autocomplete="off"></label>
+    </div>
+    <div class="btn-row">
+      <button class="btn primary" id="btnSearchPref">この県で探す</button>
+      <button class="btn" id="btnSearchNear">近くを探す</button>
+      <button class="btn" id="btnSearchGora">楽天GORAで探す</button>
+    </div>
+  </div>
+  <div class="result-meta muted" id="courseMeta"></div>
+  <div class="course-list" id="courseList"></div>
+</section>
+
+<!-- ============ SCORE ============ -->
+<section class="tab" id="tab-score" data-tab="score">
+  <div class="page-head row-between">
+    <h1>スコアカード</h1>
+    <button class="btn small" id="btnNewRound">新しいラウンド</button>
+  </div>
+  <div class="card" id="roundCard">
+    <div class="round-head">
+      <input id="roundCourse" placeholder="コース名" aria-label="コース名">
+      <input id="roundDate" type="date" aria-label="日付">
+    </div>
+    <div class="hole-bar compact">
+      <button class="step" id="scPrev">‹</button>
+      <div class="hole-info"><div class="hole-no">HOLE <b id="scHole">1</b></div><div class="hole-meta" id="scToPar">-</div></div>
+      <button class="step" id="scNext">›</button>
+    </div>
+    <div class="sc-grid">
+      <div class="sc-field"><span>PAR</span><div class="seg" id="scPar"><button data-v="3">3</button><button data-v="4">4</button><button data-v="5">5</button></div></div>
+      <div class="sc-field"><span>打数</span><div class="stepper"><button data-f="strokes" data-d="-1">−</button><b id="scStrokes">-</b><button data-f="strokes" data-d="1">＋</button></div></div>
+      <div class="sc-field"><span>パット</span><div class="stepper"><button data-f="putts" data-d="-1">−</button><b id="scPutts">-</b><button data-f="putts" data-d="1">＋</button></div></div>
+      <div class="sc-field"><span>ペナルティ</span><div class="stepper"><button data-f="penalties" data-d="-1">−</button><b id="scPen">0</b><button data-f="penalties" data-d="1">＋</button></div></div>
+      <div class="sc-field wide"><span>ティーショット</span><div class="seg" id="scFw"><button data-v="left">左ミス</button><button data-v="hit">FWキープ</button><button data-v="right">右ミス</button><button data-v="na">－</button></div></div>
+      <div class="sc-field wide"><span>バンカー</span><div class="seg" id="scSand"><button data-v="0">なし</button><button data-v="1">入った</button><button data-v="2">1回で脱出+寄せワン</button></div></div>
+    </div>
+    <div class="sc-flags" id="scFlags"></div>
+  </div>
+  <div class="table-wrap"><table class="sc-table" id="scTable"></table></div>
+  <div class="btn-row">
+    <button class="btn primary" id="btnSaveRound">ラウンドを保存</button>
+    <button class="btn" id="btnShareRound">スコアを共有</button>
+  </div>
+  <h2 class="sec-title">過去のラウンド</h2>
+  <div id="roundHistory" class="history"></div>
+</section>
+
+<!-- ============ VIDEO / TRACER ============ -->
+<section class="tab" id="tab-video" data-tab="video">
+  <div class="page-head"><h1>ショットトレーサー</h1><p class="muted">撮影した動画に弾道ラインを描いて、トリミングして保存できます。</p></div>
+  <div class="card">
+    <div class="btn-row">
+      <label class="btn primary file-btn">撮影する<input type="file" id="vidCapture" accept="video/*" capture="environment"></label>
+      <label class="btn file-btn">動画を選ぶ<input type="file" id="vidPick" accept="video/*"></label>
+    </div>
+  </div>
+  <div class="stage-wrap" id="stageWrap" hidden>
+    <canvas id="stage"></canvas>
+    <div class="stage-hint" id="stageHint"></div>
+  </div>
+  <video id="vid" playsinline muted preload="auto" hidden></video>
+  <div id="vidControls" hidden>
+    <div class="card">
+      <div class="scrub-row">
+        <button class="btn small" id="vPlay">再生</button>
+        <input type="range" id="vScrub" min="0" max="1000" value="0" aria-label="再生位置">
+        <span class="mono" id="vTime">0.00</span>
+      </div>
+      <div class="btn-row tight">
+        <button class="btn small" id="vBack">−1コマ</button>
+        <button class="btn small" id="vFwd">＋1コマ</button>
+        <select id="vSpeed" aria-label="再生速度"><option value="1">1x</option><option value="0.5">0.5x</option><option value="0.25">0.25x</option></select>
+        <button class="btn small" id="vTrimIn">ここを開始に</button>
+        <button class="btn small" id="vTrimOut">ここを終了に</button>
+      </div>
+      <div class="trim-info muted" id="trimInfo"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>トレーサー</h2><button class="btn small" id="trAuto">自動検出</button></div>
+      <ol class="tr-steps">
+        <li><button class="btn small" id="trStart">① インパクト</button><span>インパクトのコマでボールをタップ</span></li>
+        <li><button class="btn small" id="trApex">② 頂点</button><span>一番高い位置をタップ</span></li>
+        <li><button class="btn small" id="trEnd">③ 落下点</button><span>ボールが消える/落ちるコマでタップ</span></li>
+      </ol>
+      <div class="form-grid">
+        <label>線の色<select id="trColor"><option value="#ff3b30">レッド</option><option value="#ffd60a">イエロー</option><option value="#ffffff">ホワイト</option><option value="#30d5ff">シアン</option></select></label>
+        <label>太さ<input type="range" id="trWidth" min="2" max="12" value="5"></label>
+      </div>
+      <p class="muted">自動検出は三脚などで固定して、空を背景に撮った動画ほど精度が上がります。ずれたら②③をタップで直せます。</p>
+      <div class="form-grid">
+        <label>クラブ<input id="ovClub" placeholder="例: 7I"></label>
+        <label>飛距離(y)<input id="ovCarry" inputmode="numeric" placeholder="例: 155"></label>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="trReset">リセット</button>
+        <button class="btn" id="trPreview">プレビュー</button>
+        <button class="btn primary" id="trExport">動画を書き出し</button>
+      </div>
+      <div class="muted" id="exportStatus"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WEATHER & WEAR ============ -->
+<section class="tab" id="tab-weather" data-tab="weather">
+  <div class="page-head row-between">
+    <div><h1>天気とウェア</h1><p class="muted" id="wxCourse">コース未選択</p></div>
+    <button class="btn small" id="btnWxReload">更新</button>
+  </div>
+  <div class="card">
+    <div class="form-grid">
+      <label>プレー日<select id="wxDate"></select></label>
+      <label>ウェア<select id="wxGender"><option value="men">メンズ</option><option value="women">レディース</option></select></label>
+    </div>
+    <div class="wx-summary" id="wxSummary"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>時間ごとの予報</h2><span class="muted">6〜17時</span></div>
+    <div class="hours-wrap" id="wxHours"><p class="muted">天気を取得中…</p></div>
+  </div>
+  <div class="card">
+    <h2>この天気での攻め方</h2>
+    <ul class="tips" id="wxTips"></ul>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2 id="wearBand">今日のコーデ</h2><button class="btn small" id="btnAiWear">AIでコーデ提案</button></div>
+    <ul class="tips wear" id="wearItems"></ul>
+    <div class="wear-style" id="wearStyle"></div>
+    <div class="ai-out" id="aiWearOut" hidden></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>この天気に合うウェア</h2><button class="btn small" id="btnItems">人気商品を見る</button></div>
+    <div id="wearProducts"><p class="muted">ボタンを押すと、今の気温に合うウェアの人気商品を楽天市場から表示します（楽天キーの設定が必要）。</p></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>おすすめショップと新着情報</h2><span class="muted" id="feedUpdated"></span></div>
+    <div id="shopFeed"><p class="muted">読み込み中…</p></div>
+  </div>
+</section>
+
+<!-- ============ GROUP (chat / competition / polls) ============ -->
+<section class="tab" id="tab-group" data-tab="group">
+  <div class="page-head row-between">
+    <h1>ゴルフ仲間</h1>
+    <button class="btn small" id="btnRoomNew">グループを作る</button>
+  </div>
+  <div class="card" id="roomSetup" hidden>
+    <h2 id="roomSetupTitle">グループを作る</h2>
+    <div class="form-grid">
+      <label>グループ名<input id="roomName" placeholder="例: 会社ゴルフ部"></label>
+      <label>あなたの名前<input id="roomMyName" placeholder="例: たろう"></label>
+      <label id="roomCodeWrap" hidden>招待コード<input id="roomCode" autocomplete="off"></label>
+    </div>
+    <div class="btn-row">
+      <button class="btn primary" id="btnRoomCreate">作成</button>
+      <button class="btn" id="btnRoomJoinMode">招待コードで参加</button>
+      <button class="btn" id="btnRoomCancel">閉じる</button>
+    </div>
+    <p class="muted">メッセージは端末で暗号化してから送るので、招待コードを知っている仲間だけが読めます。</p>
+  </div>
+  <div class="room-bar" id="roomBar"></div>
+  <div id="roomBody" hidden>
+    <div class="seg sub-tabs" id="groupTabs"><button data-g="chat" class="on">チャット</button><button data-g="comp">コンペ</button><button data-g="poll">日程調整</button></div>
+
+    <div class="gpane" data-gp="chat">
+      <div class="chat" id="chatList"></div>
+      <form class="chat-input" id="chatForm">
+        <input id="chatText" placeholder="メッセージ" autocomplete="off" enterkeyhint="send">
+        <button class="btn primary" type="submit">送信</button>
+      </form>
+      <p class="muted chat-hint">予約タブのプランにある「仲間に共有」から、予約候補をチャットに送れます。</p>
+    </div>
+
+    <div class="gpane" data-gp="comp" hidden>
+      <div class="btn-row"><button class="btn primary" id="btnCompNew">コンペを企画</button></div>
+      <div class="card" id="compForm" hidden>
+        <h2>コンペを企画</h2>
+        <div class="form-grid">
+          <label>コンペ名<input id="cpTitle" placeholder="例: 秋の月例コンペ"></label>
+          <label>日付<input id="cpDate" type="date"></label>
+          <label>コース<input id="cpCourse" placeholder="コース名"></label>
+          <label>スタート<input id="cpStart" type="time" value="08:30"></label>
+          <label>競技方法<select id="cpFormat"><option value="newperia">新ペリア</option><option value="stroke">ストローク（グロス）</option></select></label>
+          <label>参加費(円)<input id="cpFee" type="number" inputmode="numeric" placeholder="例: 2000"></label>
+        </div>
+        <label>賞品・メモ<textarea id="cpNotes" rows="2" placeholder="優勝・BB・ドラコン・ニアピン など"></textarea></label>
+        <div class="btn-row"><button class="btn primary" id="btnCompSave">作成して仲間に送る</button><button class="btn" id="btnCompCancel">やめる</button></div>
+      </div>
+      <div id="compList"></div>
+    </div>
+
+    <div class="gpane" data-gp="poll" hidden>
+      <div class="card">
+        <h2>日程・コースの投票を作る</h2>
+        <label>質問<input id="pollQ" placeholder="例: 11月のラウンドいつにする？"></label>
+        <label>候補（1行に1つ）<textarea id="pollOpts" rows="3" placeholder="11/9(土) 〇〇CC 8,900円&#10;11/16(土) △△GC 9,500円"></textarea></label>
+        <div class="btn-row"><button class="btn primary" id="btnPollSave">投票を作る</button><button class="btn" id="btnPollDates">予約カレンダーの安い日を入れる</button></div>
+      </div>
+      <div id="pollList"></div>
+    </div>
+  </div>
+  <div class="card empty-room" id="roomEmpty">
+    <h2>仲間とつながる</h2>
+    <p>グループを作って招待リンクをLINEなどで送ると、予約の相談チャット・日程調整・コンペの受付と順位表をみんなで使えます。</p>
+    <div class="btn-row"><button class="btn primary" id="btnRoomNew2">グループを作る</button><button class="btn" id="btnRoomJoin2">招待コードで参加</button></div>
+  </div>
+</section>
+
+<!-- ============ MENU ============ -->
+<section class="tab" id="tab-menu" data-tab="menu">
+  <div class="page-head"><h1>メニュー</h1></div>
+  <div class="menu-grid">
+    <button class="menu-tile" data-goto="course"><svg viewBox="0 0 24 24"><path d="M6 21V4l9 3.5L6 11"/><path d="M3 21h18"/></svg><b>コースを探す</b><span>全国のゴルフ場</span></button>
+    <button class="menu-tile" data-goto="booking"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><b>最安予約</b><span>日付ごとの最安値</span></button>
+    <button class="menu-tile" data-goto="analysis"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><b>課題と目標</b><span>AIコーチ・統計</span></button>
+    <button class="menu-tile" data-goto="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><b>設定</b><span>クラブ距離・キー・共有</span></button>
+  </div>
+</section>
+
+<!-- ============ BOOKING ============ -->
+<section class="tab" id="tab-booking" data-tab="booking">
+  <div class="page-head"><h1>最安予約カレンダー</h1><p class="muted">楽天GORAのプランを日付ごとに調べ、いちばん安い料金をカレンダーに並べます。</p></div>
+  <div class="card">
+    <div class="form-grid">
+      <label>都道府県<select id="bkPref"></select></label>
+      <label>開始日<input type="date" id="bkStart"></label>
+      <label>日数<select id="bkDays"><option>7</option><option selected>14</option><option>21</option><option>30</option></select></label>
+      <label>上限(円)<input type="number" id="bkMax" inputmode="numeric" placeholder="例: 12000"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="bkWeekend"> 土日祝だけ調べる</label>
+    <div class="btn-row"><button class="btn primary" id="btnBkSearch">最安カレンダーを作る</button><button class="btn" id="btnBkStop" hidden>中止</button></div>
+    <div class="muted" id="bkStatus"></div>
+  </div>
+  <div class="cal" id="bkCal"></div>
+  <div id="bkPlans"></div>
+  <div class="card ext-links">
+    <h2>予約サイトで直接探す</h2>
+    <div class="btn-row">
+      <a class="btn" href="https://gora.golf.rakuten.co.jp/" target="_blank" rel="noopener">楽天GORA</a>
+      <a class="btn" href="https://reserve.golfdigest.co.jp/" target="_blank" rel="noopener">GDO</a>
+      <a class="btn" href="https://golf-jalan.net/" target="_blank" rel="noopener">じゃらんゴルフ</a>
+      <a class="btn" href="https://www.accordiagolf.com/" target="_blank" rel="noopener">アコーディア</a>
+      <a class="btn" href="https://www.pacificgolf.co.jp/" target="_blank" rel="noopener">PGM</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ANALYSIS ============ -->
+<section class="tab" id="tab-analysis" data-tab="analysis">
+  <div class="page-head row-between"><h1>課題と目標</h1>
+    <label class="target-score">目標スコア <input type="number" id="targetScore" inputmode="numeric"></label>
+  </div>
+  <div class="stat-grid" id="statGrid"></div>
+  <div class="card">
+    <div class="card-head"><h2>スコア推移</h2><span class="muted" id="trendNote"></span></div>
+    <canvas id="trendChart" height="160"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>課題ランキング</h2><span class="muted">目標スコアの目安との差</span></div>
+    <div id="issueList"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>AIコーチ</h2><button class="btn small primary" id="btnAiCoach">AIで分析</button></div>
+    <div class="ai-out" id="aiCoachOut"><p class="muted">ラウンドの記録・ショットの実測距離・課題ランキングをAIに渡して、課題と練習メニュー、次のラウンドの目標を作ります。</p></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>番手別の実測距離</h2><button class="btn small" id="btnApplyClub">設定に反映</button></div>
+    <div class="table-wrap"><table class="club-table" id="clubStats"></table></div>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section class="tab" id="tab-settings" data-tab="settings">
+  <div class="page-head"><h1>設定</h1></div>
+  <div class="card">
+    <h2>マイクラブ（キャリー）</h2>
+    <p class="muted">番手アドバイスに使います。ショット記録が貯まると「課題と目標」から実測値を反映できます。</p>
+    <div class="club-edit" id="clubEdit"></div>
+    <div class="btn-row"><button class="btn small" id="btnAddClub">クラブを追加</button></div>
+  </div>
+  <div class="card">
+    <h2>表示</h2>
+    <div class="form-grid">
+      <label>距離の単位<select id="setUnit"><option value="yd">ヤード</option><option value="m">メートル</option></select></label>
+      <label>名前<input id="setName" placeholder="スコア共有に表示"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="setSun"> 屋外モード（直射日光の下でも読める高コントラスト・大きな文字）</label>
+    <label class="check"><input type="checkbox" id="setWake" checked> プレー中は画面を消さない</label>
+  </div>
+  <div class="card">
+    <h2>AI（Claude）</h2>
+    <p class="muted">攻略と課題分析に使います。キーはこの端末の中だけに保存され、Anthropic以外には送信しません。</p>
+    <div class="form-grid">
+      <label>APIキー<input id="setClaudeKey" type="password" placeholder="sk-ant-..." autocomplete="off"></label>
+      <label>モデル<select id="setModel"><option value="claude-sonnet-5-5">Claude Sonnet 5.5（おすすめ）</option><option value="claude-opus-5-5">Claude Opus 5.5（高精度）</option><option value="claude-haiku-5-5">Claude Haiku 5.5（高速・安価）</option></select></label>
+    </div>
+    <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">APIキーを発行する</a>
+  </div>
+  <div class="card">
+    <h2>楽天GORA（予約・料金）</h2>
+    <p class="muted">Rakuten Developersでアプリを登録し、許可するサイトにこのアプリのURLを入れてください。</p>
+    <div class="form-grid">
+      <label>アプリID (applicationId)<input id="setRakutenId" autocomplete="off"></label>
+      <label>アクセスキー (accessKey)<input id="setRakutenKey" type="password" autocomplete="off"></label>
+      <label>アフィリエイトID（任意）<input id="setRakutenAff" autocomplete="off"></label>
+    </div>
+    <a class="link" href="https://webservice.rakuten.co.jp/" target="_blank" rel="noopener">Rakuten Developers を開く</a>
+  </div>
+  <div class="card">
+    <h2>攻略メモの共有・バックアップ</h2>
+    <p class="muted">攻略メモ・グリーン位置・ラウンド記録をファイルにまとめて、友だちと交換したり機種変更に使えます。読み込むと、同じホールのメモは新しい方で更新されます。</p>
+    <div class="btn-row">
+      <button class="btn primary" id="btnExportNotes">攻略メモを友だちに送る</button>
+      <button class="btn" id="btnExportAll">全データをバックアップ</button>
+      <label class="btn file-btn">読み込み<input type="file" id="importFile" accept="application/json,.json"></label>
+    </div>
+  </div>
+  <div class="card">
+    <h2>アプリを友だちに渡す</h2>
+    <p class="muted">このページのURLを送り、受け取った人はブラウザで開いて「ホーム画面に追加」を押すとインストールできます。</p>
+    <div class="share-url"><code id="appUrl"></code><button class="btn small" id="btnCopyUrl">コピー</button><button class="btn small" id="btnShareApp">共有</button></div>
+  </div>
+  <p class="muted credits">地図: Esri World Imagery / コースデータ: © OpenStreetMap contributors (ODbL) / 気象・標高: Open-Meteo / 予約: 楽天ウェブサービス</p>
+</section>
+
+</main>
+
+<nav class="tabbar" id="tabbar">
+  <button data-goto="navi" class="on"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Z"/><circle cx="12" cy="9" r="2.5"/></svg>ナビ</button>
+  <button data-goto="score"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>スコア</button>
+  <button data-goto="video"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>動画</button>
+  <button data-goto="weather"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.5"/><path d="M9 2v1.5M3.5 9H2M4.6 4.6l1 1M13.4 4.6l-1 1"/><path d="M8 20h9a4 4 0 0 0 0-8 5 5 0 0 0-9.6 1.6A3.2 3.2 0 0 0 8 20Z"/></svg>天気</button>
+  <button data-goto="group"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4Z"/><path d="M8 10h8M8 13h5"/></svg>仲間<i class="badge" id="groupBadge" hidden></i></button>
+  <button data-goto="menu"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>メニュー</button>
+</nav>
+
+<div class="install-banner" id="installBanner" hidden>
+  <span id="installText">ホーム画面に追加すると、アプリとしてすぐ起動できます</span>
+  <button class="btn small primary" id="btnInstall">追加</button>
+  <button class="btn small" id="btnInstallClose">閉じる</button>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

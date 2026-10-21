@@ -1,0 +1,19 @@
+{
+  "name": "Golf Navi",
+  "short_name": "Golf Navi",
+  "description": "GPS距離計・番手アドバイス・コース攻略・スコア・ショットトレーサー・天気とウェア・仲間とコンペ・最安予約",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#123524",
+  "theme_color": "#123524",
+  "categories": ["sports", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
