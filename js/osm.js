@@ -34,9 +34,9 @@ export async function bundledCourses() {
     bundledMeta = { count: j.count, withHoles: j.withHoles, generatedAt: j.generatedAt };
     bundled = j.courses.map((c) => ({
       id: c.id, name: c.n, kana: c.k || '', lat: c.a, lon: c.o, bounds: c.b || null, holes: c.h || null,
-      website: c.w || '', phone: c.ph || '', pref: c.p || '', address: c.p || '', operator: c.op || '',
-      hasDetail: !!c.d, holesMapped: c.hm || 0, greensMapped: c.gm || 0, private: c.ac === 'private', source: 'osm',
-      _s: searchKey(c.n + ' ' + (c.k || '') + ' ' + (c.op || '')),
+      website: c.w || '', phone: c.ph || '', pref: c.p || '', operator: c.op || '',
+      hasDetail: !!c.d, holesMapped: c.hm || 0, greensMapped: c.gm || 0, private: c.ac === 'private', source: 'osm', approx: !!c.ap, unnamed: !!c.un, address: c.ad ? c.p + c.ad.replace(c.p, '') : c.p || '',
+      _s: searchKey(c.n + ' ' + (c.k || '') + ' ' + (c.op || '') + ' ' + (c.ad || '') + ' ' + (c.p || '')),
     }));
   } catch { bundled = []; }
   return bundled;
@@ -205,7 +205,7 @@ export function buildHoles(f, userHoles = {}) {
     if (u?.tee || u?.green) {
       const line = [u.tee, ...(u.mid ? [u.mid] : []), u.green].filter(Boolean);
       const green = u.green ? nearestGreen(f, u.green, 40) : null;
-      out.push({ no: n, key, par: u.par || null, line: line.length >= 2 ? line : [], tee: u.tee || null, green, center: u.green || null, lengthM: line.length >= 2 ? lineLength(line) : 0, source: u.learned ? 'learned' : 'user' });
+      out.push({ no: n, key, par: u.par || null, line: line.length >= 2 ? line : [], tee: u.tee || null, green, center: u.green || null, lengthM: line.length >= 2 ? lineLength(line) : 0, source: u.learned ? 'learned' : u.community ? 'community' : 'user' });
     } else if (!holes.length || n <= 18) {
       out.push({ no: n, key, par: u?.par || null, line: [], tee: null, green: null, center: null, lengthM: 0, source: 'none' });
     }

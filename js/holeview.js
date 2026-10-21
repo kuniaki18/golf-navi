@@ -233,10 +233,32 @@ export class HoleView {
     ctx.fillStyle = d.pin ? '#ff3b30' : '#ffd60a'; ctx.beginPath(); ctx.moveTo(g.x, g.y - 24); ctx.lineTo(g.x + 14, g.y - 19); ctx.lineTo(g.x, g.y - 14); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(g.x, g.y, 2.5, 0, 7); ctx.fill();
 
+    // green slope arrows (downhill), from the elevation analysis
+    if (this.mode === 'green' && d.slope && d.slope.pct >= 0.3) {
+      const gp = h.green?.pts?.length ? h.green.pts : null;
+      const ctr = S(f.green);
+      const span = gp ? Math.max(...gp.map((p) => Math.hypot(S(p).x - ctr.x, S(p).y - ctr.y))) : 60;
+      const ang = (d.slope.downBearing * Math.PI) / 180 + f.a; // screen rotation of the downhill direction
+      const len = Math.min(26, 10 + d.slope.pct * 5);
+      ctx.save();
+      for (let gy = -2; gy <= 2; gy++) for (let gx = -2; gx <= 2; gx++) {
+        const px = ctr.x + gx * span * 0.38, py = ctr.y + gy * span * 0.38;
+        if (gp) { const ll = this._toLatLon(f, px, py); let ins = false; for (let i = 0, j = gp.length - 1; i < gp.length; j = i++) { const a = gp[i], b = gp[j]; if ((a.lat > ll.lat) !== (b.lat > ll.lat) && ll.lon < ((b.lon - a.lon) * (ll.lat - a.lat)) / (b.lat - a.lat) + a.lon) ins = !ins; } if (!ins) continue; }
+        ctx.save(); ctx.translate(px, py); ctx.rotate(ang);
+        ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, len / 2); ctx.lineTo(0, -len / 2 + 5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -len / 2); ctx.lineTo(4, -len / 2 + 6); ctx.lineTo(-4, -len / 2 + 6); ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+      ctx.font = '700 12px system-ui';
+      tag(ctx, W / 2, 62, `傾斜 ${d.slope.pct.toFixed(1)}%（矢印＝下り）`, 'rgba(0,0,0,.7)', '#fff');
+    }
+
     // green distances / pin hint
     if (this.mode === 'green') {
       ctx.font = '600 13px system-ui'; ctx.textAlign = 'center';
-      tag(ctx, W / 2, H - 18, d.pin ? '今日のピン位置を設定済み（タップで変更）' : 'グリーン上をタップして今日のピン位置を設定', 'rgba(0,0,0,.7)', '#fff');
+      tag(ctx, W / 2, H - 46, d.pin ? '今日のピン位置を設定済み（タップで変更）' : 'グリーン上をタップして今日のピン位置を設定', 'rgba(0,0,0,.7)', '#fff');
       if (d.me) {
         ctx.font = '700 15px "Barlow Condensed", system-ui';
         tag(ctx, g.x, g.y + 18, String(fmt(dist(d.me, f.green))), 'rgba(0,0,0,.75)', '#ffd60a');
@@ -249,6 +271,12 @@ export class HoleView {
       if (m.x > -20 && m.x < W + 20 && m.y > -20 && m.y < H + 20) {
         const accPx = (d.acc || 5) * (Math.hypot(g.x - m.x, g.y - m.y) / Math.max(dist(d.me, f.green), 1));
         ctx.fillStyle = 'rgba(47,139,255,.18)'; ctx.beginPath(); ctx.arc(m.x, m.y, Math.min(accPx, 60), 0, 7); ctx.fill();
+        // facing direction (compass): a soft cone
+        if (Number.isFinite(d.heading)) {
+          const hd = (d.heading * Math.PI) / 180 + f.a - Math.PI / 2;
+          const gr = ctx.createRadialGradient(m.x, m.y, 4, m.x, m.y, 46); gr.addColorStop(0, 'rgba(47,139,255,.55)'); gr.addColorStop(1, 'rgba(47,139,255,0)');
+          ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.arc(m.x, m.y, 46, hd - 0.38, hd + 0.38); ctx.closePath(); ctx.fill();
+        }
         ctx.fillStyle = '#2f8bff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(m.x, m.y, 8, 0, 7); ctx.fill(); ctx.stroke();
       }
     }

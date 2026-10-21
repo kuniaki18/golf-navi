@@ -44,3 +44,13 @@
 .qs-finish { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; background: var(--flag); color: #1a1400; border-radius: 10px; padding: 8px 10px; }
 .qs-finish b { font: 700 1.4rem/1 var(--display); }
 .qs-finish .btn.primary { background: var(--bar); border-color: var(--bar); color: #fff; }
+.gps-status.q-good { background: rgba(29,138,79,.9); }
+.gps-status.q-fair { background: rgba(180,130,0,.9); }
+.gps-status.q-poor { background: rgba(196,55,45,.92); }
+.gps-status.q-lock { background: rgba(47,139,255,.95); }
+.green-card .gr-main { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.green-card .gr-main b { font: 700 2.2rem/1 var(--display); color: var(--green); }
+.green-card .gr-cond { margin: 0; font-size: .88rem; }
+.green-read { display: flex; flex-direction: column; gap: 8px; }
+.green-read p { margin: 0; }
+.sel { user-select: all; font-family: var(--mono); }

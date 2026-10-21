@@ -7,6 +7,8 @@ import { playsLike, recommendClub, weather, headComponent, crossComponent, eleva
 import { holeStrategy, hazardDistancesFrom } from './strategy.js';
 import { askClaude, COACH_SYSTEM, hasAI } from './ai.js';
 import { HoleView, IMAGERY, setImagery } from './holeview.js';
+import { analyzeGreen, readPutt, greenCondition } from './greenslope.js';
+import { submitHole, communityHoles } from './community.js';
 
 let map, layers, meMarker, accCircle, overlay, mapTiles;
 let hv = null;
@@ -43,6 +45,7 @@ export function initNavi() {
         const u = userHoles(); const cur = u[h.key] || {};
         if (!cur.tee) { u[h.key] = { ...cur, tee: ll, learned: false, updatedAt: Date.now() }; save('holes'); toast('ティーを登録。次にグリーンをタップ'); render(); return; }
         u[h.key] = { ...cur, green: ll, learned: false, updatedAt: Date.now() }; save('holes');
+        submitHole(state.course, h.key, u[h.key]);
         toast(`${h.no}番を登録しました`); rebuild(); return;
       }
       target = ll; render();
@@ -77,6 +80,9 @@ export function initNavi() {
   $('#btnArcs').onclick = () => { state.ui.arcs = state.ui.arcs === 'clubs' ? 'dist' : 'clubs'; save('ui'); $('#btnArcs').classList.toggle('on', state.ui.arcs === 'clubs'); render(); };
   $('#btnArcs').classList.toggle('on', state.ui.arcs === 'clubs');
   $('#btnOffline').onclick = saveOffline;
+  $('#btnPrecise').onclick = startPrecise;
+  $('#btnGreenRead').onclick = () => { const h = curHole(); if (h) { try { const c = JSON.parse(localStorage.getItem('golfnavi:greens:v1') || '{}'); delete c[`${cid()}:${h.key}`]; localStorage.setItem('golfnavi:greens:v1', JSON.stringify(c)); } catch {} } readGreen(false); };
+  startCompass();
   initQuickScore();
   fillShotClubs();
   renderShotLog();
@@ -98,8 +104,84 @@ function ensureMap() {
   renderCourseLayer();
 }
 
+// ---------------- GPS quality, precise lock, compass ----------------
+let gpsHeading = null, compassHeading = null;
+function gpsBadge() {
+  const el = $('#gpsStatus');
+  const accY = m2y(meAcc || 99);
+  const q = precise?.lockUntil ? 'lock' : accY <= 6 ? 'good' : accY <= 13 ? 'fair' : 'poor';
+  el.className = 'gps-status q-' + q;
+  el.textContent = `${q === 'lock' ? '精密ロック' : 'GPS'} ±${fmt(accY)}${ul()}${q === 'poor' ? ' · 精度が低い（空の見える所で）' : fixes.length > 2 ? ' · 安定' : ''}`;
+}
+function startPrecise() {
+  if (!me) { toast('GPSを取得中です'); return; }
+  precise = { until: Date.now() + 6000, fixes: [] };
+  $('#btnPrecise').classList.add('on');
+  toast('6秒間その場で動かずに待ってください');
+  setTimeout(() => { if (precise?.until) finishPrecise(); }, 6500);
+}
+function finishPrecise() {
+  const fs = [...(precise?.fixes || []), ...fixes.slice(-3)];
+  $('#btnPrecise').classList.remove('on');
+  if (fs.length < 2) { precise = null; toast('GPSの更新が少なく精密計測できませんでした'); return; }
+  // drop outliers (>1.5× median distance from the mean), then accuracy-weighted mean
+  const mean = (arr) => { let w = 0, la = 0, lo = 0; for (const f of arr) { const k = 1 / Math.max(2, f.acc) ** 2; w += k; la += f.lat * k; lo += f.lon * k; } return { lat: la / w, lon: lo / w }; };
+  let m = mean(fs);
+  const ds = fs.map((f) => dist(f, m)).sort((a, b) => a - b);
+  const med = ds[Math.floor(ds.length / 2)];
+  const kept = fs.filter((f) => dist(f, m) <= Math.max(2, med * 1.5));
+  m = mean(kept.length >= 2 ? kept : fs);
+  me = m;
+  meAcc = Math.max(1.5, Math.min(...kept.map((f) => f.acc)) / Math.sqrt(kept.length));
+  precise = { lockUntil: Date.now() + 90000, pos: m };
+  gpsBadge(); render();
+  toast(`精密計測 ±${fmt(m2y(meAcc))}${ul()}（${kept.length}回の平均）`);
+}
+function startCompass() {
+  const on = (e) => {
+    const h = e.webkitCompassHeading ?? (e.absolute && Number.isFinite(e.alpha) ? (360 - e.alpha) % 360 : null);
+    if (Number.isFinite(h)) { compassHeading = h; if (view !== 'map') hvHeadingThrottle(); }
+  };
+  const attach = () => { window.addEventListener('deviceorientationabsolute', on); window.addEventListener('deviceorientation', on); };
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS: must be requested from a tap
+    document.addEventListener('click', function ask() { DeviceOrientationEvent.requestPermission().then((r) => { if (r === 'granted') attach(); }).catch(() => {}); document.removeEventListener('click', ask); }, { once: true });
+  } else attach();
+}
+let hdT = 0;
+function hvHeadingThrottle() { const now = Date.now(); if (now - hdT < 250) return; hdT = now; hv?.set({ heading: compassHeading ?? gpsHeading }); }
+
+// ---------------- green read ----------------
+let greenBusy = false;
+async function readGreen(auto) {
+  const h = curHole(); const c = holeCenter(h);
+  if (!h || !c) { $('#greenRead').innerHTML = '<p class="muted">このホールのグリーン位置が未登録です。</p>'; return; }
+  if (greenBusy) return; greenBusy = true;
+  $('#greenRead').innerHTML = '<p class="muted">国土地理院の高さデータからグリーンの傾斜を計算しています…</p>';
+  try {
+    const key = `${cid()}:${h.key}`;
+    const [slope, cond] = await Promise.all([analyzeGreen(h.green, h.center || c, key), state.course ? greenCondition(state.course.lat, state.course.lon) : null]);
+    curSlope = slope;
+    const from = me && dist(me, c) < 400 ? me : (h.line?.length >= 2 ? h.line[h.line.length - 2] : h.tee) || me;
+    const pin = (cid() && todayPins()[h.key]) || c;
+    const rd = slope && from ? readPutt(slope, from, pin, state.ui.swHand || 'right') : null;
+    const dirTxt = slope ? `${compass(slope.downBearing)}方向へ下る傾斜` : '';
+    $('#greenRead').innerHTML = slope ? `
+      <div class="gr-main"><b>${slope.pct < 0.6 ? 'ほぼ平ら' : `${slope.pct.toFixed(1)}%`}</b><span>${esc(dirTxt)} · 高低差 ${(slope.range * 100).toFixed(0)}cm</span></div>
+      ${rd ? `<ul class="tips"><li>${me && dist(me, c) < 400 ? 'いまの位置から' : 'フェアウェイ側から'}ピンへ：<b>${esc(rd.upDown)}</b>・<b>${esc(rd.sideTxt)}</b></li><li>${esc(rd.aim)}。${rd.along > 0.8 ? '下りはタッチを弱めに。' : rd.along < -0.8 ? '上りはしっかり届かせる。' : ''}</li><li>アプローチは${slope.pct >= 1 ? 'グリーンの低い側（矢印の先）に止めて、上りのパットを残すと安全。' : '奥に外さなければOK。'}</li></ul>` : ''}
+      ${cond ? `<p class="gr-cond"><span class="pill">速さ：${esc(cond.speed)}</span> ${esc(cond.note)}</p>` : ''}
+      <p class="muted">データ: ${esc(slope.src)}（${slope.n}点）。芝目や細かいアンジュレーションまでは分かりません。目安として使ってください。</p>`
+      : '<p class="muted">この場所の高さデータが取得できませんでした。</p>';
+    render();
+  } catch { if (!auto) $('#greenRead').innerHTML = '<p class="muted">解析できませんでした。電波の良い所でもう一度お試しください。</p>'; }
+  finally { greenBusy = false; }
+}
+let curSlope = null;
+
 function setView(v) {
   view = v;
+  $('#greenCard').hidden = v !== 'green';
+  if (v === 'green') readGreen(true);
   $$('#viewTabs [data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
   const isMap = v === 'map';
   $('#holeCanvas').hidden = isMap; $('#map').hidden = !isMap;
@@ -126,18 +208,31 @@ function startGPS() {
     if (err.code !== 1) setTimeout(startGPS, 5000);
   }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
 }
+let precise = null; // { until, fixes[] } while measuring, { lockUntil, pos } once locked
 function onFix(pos) {
   if (manualMe) return;
-  const p = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy || 30, t: Date.now() };
+  const p = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy || 30, t: Date.now(), speed: pos.coords.speed };
+  if (Number.isFinite(pos.coords.heading) && (pos.coords.speed || 0) > 0.8) gpsHeading = pos.coords.heading;
   if (p.acc > 80 && me) return; // ignore very poor fixes once we have one
+  // precise measurement in progress: collect, then lock the averaged position
+  if (precise?.until) {
+    precise.fixes.push(p);
+    if (Date.now() >= precise.until) finishPrecise();
+    else { $('#gpsStatus').textContent = `精密計測中… ${Math.ceil((precise.until - Date.now()) / 1000)}秒（動かないで）`; return; }
+  }
+  if (precise?.lockUntil) {
+    // keep the locked position until the player walks away (>6m) or 90s pass
+    if (Date.now() < precise.lockUntil && dist(precise.pos, p) < Math.max(6, p.acc * 0.8)) { render(); return; }
+    precise = null; fixes.length = 0;
+  }
   // walking resets the average; standing still averages the last fixes weighted by accuracy
   if (fixes.length && dist(fixes[fixes.length - 1], p) > Math.max(8, p.acc)) fixes.length = 0;
-  fixes.push(p); while (fixes.length > 6) fixes.shift();
+  fixes.push(p); while (fixes.length > 8) fixes.shift();
   let w = 0, la = 0, lo = 0;
   for (const f of fixes) { const k = 1 / Math.max(3, f.acc) ** 2; w += k; la += f.lat * k; lo += f.lon * k; }
   me = { lat: la / w, lon: lo / w };
   meAcc = Math.max(2, Math.min(...fixes.map((f) => f.acc)) / Math.sqrt(fixes.length));
-  $('#gpsStatus').textContent = `GPS ±${fmt(m2y(meAcc))}${ul()}${fixes.length > 2 ? ' · 安定' : ''}`;
+  gpsBadge();
   if ($('#autoHole').checked && holes.length) autoHole();
   detectCourse();
   render();
@@ -235,15 +330,17 @@ export async function loadCourse(force) {
       toast(e.message, 4000);
     }
   }
+  communityData = await communityHoles(c.id).catch(() => ({}));
   rebuild(true);
   try { wx = await weather(c.lat, c.lon); render(); } catch {}
 }
 
 let allHoles = [];
+let communityData = {};
 const activeSet = () => (cid() && state.ui.holeSet?.[cid()]) || 0;
 function rebuild(first) {
   const keep = curHole()?.key ?? state.ui.holeKey;
-  allHoles = buildHoles(features, userHoles());
+  allHoles = buildHoles(features, { ...communityData, ...userHoles() });
   const sets = [...new Set(allHoles.map((h) => h.set || 0))].sort((a, b) => a - b);
   if (!sets.includes(activeSet())) setSet(0, false);
   holes = allHoles.filter((h) => (h.set || 0) === activeSet());
@@ -286,7 +383,7 @@ export function gotoHole(i, fit) {
   $('#holeNo').textContent = h.no > 100 ? '?' : h.no;
   const lenY = h.lengthM ? m2y(h.lengthM) : null;
   $('#holeMeta').textContent = `PAR ${h.par ?? '-'}${h.parEst ? '（推定）' : ''} ·${lenY ? fmt(lenY) + ul() : '距離データなし'}${h.hcp ? ' · HDCP ' + h.hcp : ''}`;
-  $('#holeSrc').textContent = { osm: '', user: '登録済み', learned: '自動学習', none: '未登録' }[h.source] || '';
+  $('#holeSrc').textContent = { osm: '', user: '登録済み', learned: '自動学習', community: 'みんなの地図', none: '未登録' }[h.source] || '';
   $('#holeSrc').className = 'src-badge ' + h.source;
   $('#holeNote').value = cid() ? getNote(cid(), h.key) : '';
   $('#noteSaved').textContent = '';
@@ -295,6 +392,7 @@ export function gotoHole(i, fit) {
   $('#aiHoleOut').innerHTML = ai ? md(ai.text) + `<p class="muted">AI作成: ${new Date(ai.updatedAt).toLocaleDateString('ja-JP')}</p>` : '';
   renderStrategy();
   renderQuickScore();
+  curSlope = null; if (view === 'green') readGreen(true);
   if (fit) { hv.resetView(); fitMap(); }
   render();
   window.dispatchEvent(new CustomEvent('navi-hole', { detail: { no: h.no, par: h.parEst ? null : h.par } }));
@@ -322,6 +420,7 @@ function render() {
   hv?.set({
     hole: h, features, me, acc: meAcc, target, pin, unit: unit() === 'm' ? 'm' : 'yd', hazards: strat?.hazards || [], area, draft,
     arcs: state.ui.arcs === 'clubs' ? state.clubs : null, wind: wx, shots: todaysShots(h),
+    slope: view === 'green' ? curSlope : null, heading: compassHeading ?? gpsHeading,
     emptyText: !state.course ? 'コースを選ぶとホールが表示されます' : draft?.tee ? `${h.no}番のグリーンをタップ` : `${h?.no ?? ''}番は未登録：ティーをタップ（拡大・移動できます）`,
   });
   if (view === 'map') renderMapOverlay(c);
@@ -474,6 +573,7 @@ function mappingTap(p) {
   save('holes');
   const nextStep = mapClick === 'tee' ? 'green' : mapClick === 'mid' ? 'green' : 'tee';
   const finishedHole = mapClick === 'green';
+  if (u[h.key].tee && u[h.key].green) submitHole(state.course, h.key, u[h.key]);
   rebuild();
   setMapClick(nextStep);
   if (finishedHole) { toast(`${h.no}番を登録しました`); gotoHole(holeIdx + 1, true); setMapClick('tee'); }
@@ -494,14 +594,14 @@ function recordShot() {
 }
 /** first full shot on an unmapped hole = tee, putting position = green */
 function learn(h, club) {
-  if (!h || !cid() || h.source === 'osm') return;
+  if (!h || !cid() || h.source === 'osm' || h.source === 'community') return;
   const u = userHoles(); const cur = u[h.key] || {};
   if (cur.learned === false) return; // user-mapped: don't overwrite
   const shotsHere = (state.shots || []).filter((s) => s.courseId === cid() && s.hole === h.no && s.date?.slice(0, 10) === new Date().toISOString().slice(0, 10));
   let changed = false;
   if (club !== 'パター' && !cur.tee && !shotsHere.length) { cur.tee = { ...me }; changed = true; }
   if (club === 'パター' && !cur.green) { cur.green = { ...me }; changed = true; }
-  if (changed) { u[h.key] = { ...cur, learned: true, updatedAt: Date.now() }; save('holes'); rebuild(); toast(`${h.no}番の${club === 'パター' ? 'グリーン' : 'ティー'}位置を覚えました`); }
+  if (changed) { u[h.key] = { ...cur, learned: true, updatedAt: Date.now() }; save('holes'); if (u[h.key].tee && u[h.key].green) submitHole(state.course, h.key, u[h.key]); rebuild(); toast(`${h.no}番の${club === 'パター' ? 'グリーン' : 'ティー'}位置を覚えました`); }
 }
 function endShot(manual) {
   const ps = state.pendingShot;

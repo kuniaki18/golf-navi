@@ -5,6 +5,7 @@ import { openBook } from './coursebook.js';
 import { initSwing } from './swing.js';
 import { initMemory, openMemory } from './memory.js';
 import { maybeOnboard } from './onboard.js';
+import { initFeedback } from './feedback.js';
 import { initCourses } from './courses.js';
 import { initScore, syncCourse } from './score.js';
 import { initTracer } from './tracer.js';
@@ -50,6 +51,8 @@ function initSettings() {
   $('#setSun').onchange = () => setSun($('#setSun').checked);
   $('#setWake').checked = s.wake !== false;
   $('#setWake').onchange = () => { s.wake = $('#setWake').checked; save('settings'); wake(state.ui.tab === 'navi'); };
+  $('#setShareMaps').checked = s.shareMaps !== false;
+  $('#setShareMaps').onchange = () => { s.shareMaps = $('#setShareMaps').checked; save('settings'); };
   $('#btnSun').onclick = () => setSun(!state.settings.sun);
   renderClubs();
   $('#btnAddClub').onclick = () => { state.clubs.push({ name: '新しいクラブ', carry: 100 }); save('clubs'); renderClubs(); };
@@ -137,10 +140,11 @@ function boot() {
   if (state.settings.sun) document.documentElement.classList.add('sun');
   document.body.addEventListener('click', (e) => {
     const g = e.target.closest('[data-goto]');
-    if (g) { e.preventDefault(); goto(g.dataset.goto); }
+    if (g) { e.preventDefault(); goto(g.dataset.goto); if (g.dataset.scroll) setTimeout(() => document.getElementById(g.dataset.scroll)?.scrollIntoView({ behavior: 'smooth' }), 80); }
   });
   $('#openSettings').onclick = () => goto('settings');
   initSettings();
+  initFeedback();
   initCourses(async (c, mode) => { courseChip(); syncCourse(); goto(mode === 'book' ? 'book' : 'navi'); if (mode !== 'book') toast(`${state.course.name} を読み込みます`); await loadCourse(false); if (mode === 'book') openBook(); });
   window.addEventListener('open-book', () => goto('book'));
   $('#btnShareIntel').onclick = () => shareCourseIntel();

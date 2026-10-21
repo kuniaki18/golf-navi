@@ -129,12 +129,19 @@ pass('relations', {
 });
 log('relations kept', rels.length, 'member ways', relWayIds.size);
 
+// things that carry a golf course's name without being the course outline:
+// clubhouses, sport=golf areas, buildings / amenities named like a course
+const GOLFNAME = /(カントリー|カンツリー|ゴルフ|倶楽部|ＧＣ|ＣＣ|\bG\.?C\b|\bC\.?C\b|golf|country ?club|links)/i;
+const isNameSrc = (t) => !!t.name && !t.highway && !t.railway && !t.public_transport && !t.route && !t.bus && !t.boundary && !t.place
+  && (t.sport === 'golf' || t.club === 'golf' || (GOLFNAME.test(t.name) && (t.building || t.amenity || t.leisure || t.tourism || t.club || t.sport || t.landuse || t.shop === undefined && t.office === undefined)));
+const nameNodes = [];
+
 // pass 2: ways
 const ways = new Map(); // id -> {tags, refs}
 pass('ways', {
   ways: (w) => {
     const t = w.tags;
-    if (isCourse(t) || isGolf(t) || isWater(t) || relWayIds.has(w.id)) ways.set(w.id, { tags: t, refs: w.refs });
+    if (isCourse(t) || isGolf(t) || isWater(t) || relWayIds.has(w.id) || isNameSrc(t)) ways.set(w.id, { tags: t, refs: w.refs });
   },
 });
 log('ways kept', ways.size);
@@ -149,6 +156,7 @@ pass('nodes', {
     while (ptr < need.length && need[ptr] < id) ptr++;
     if (ptr < need.length && need[ptr] === id) { nlat[ptr] = lat; nlon[ptr] = lon; }
     if (tags && (isCourse(tags) || tags.golf === 'pin' || tags.golf === 'tee' || tags.golf === 'green')) poiNodes.push({ id, lat, lon, tags });
+    else if (tags && isNameSrc(tags)) nameNodes.push({ lat, lon, tags });
   },
 });
 log('nodes resolved', need.length, 'poi nodes', poiNodes.length);
@@ -225,8 +233,21 @@ for (const n of poiNodes) {
 }
 log('courses raw', courses.length, 'features', features.length);
 
+// name sources (clubhouses etc.), names cleaned of facility words
+const FACILITY = /\s*(の)?(クラブハウス|ｸﾗﾌﾞﾊｳｽ|クラブ・ハウス|レストラン|駐車場|フロント|事務所|ゲート|入口|入り口|管理棟|コテージ|ロッジ|売店|茶店|休憩所|スタート小屋|練習グリーン|カート庫)\s*$/;
+const nameSrcs = [];
+for (const n of nameNodes) nameSrcs.push({ name: n.tags.name.replace(FACILITY, '').trim(), c: [n.lat, n.lon], strong: n.tags.sport === 'golf' || n.tags.club === 'golf' || /クラブハウス/.test(n.tags.name), tags: n.tags });
+for (const [, w] of ways) {
+  const t = w.tags;
+  if (isCourse(t) || isGolf(t) || isWater(t) || !isNameSrc(t)) continue;
+  const g = wayGeom(w); if (!g.length) continue;
+  nameSrcs.push({ name: t.name.replace(FACILITY, '').trim(), c: centroid(g), strong: t.sport === 'golf' || t.club === 'golf' || /クラブハウス/.test(t.name), tags: t, area: g.length > 3 ? dist([bboxOf([g])[0], bboxOf([g])[1]], [bboxOf([g])[2], bboxOf([g])[3]]) : 0 });
+}
+log('name sources', nameSrcs.length);
+
 // course name & filtering
 const UNNAMED = '名称未登録のゴルフ場';
+const NOT_GOLF_EARLY = /パークゴルフ|マレットゴルフ|グラ[ウン]*ンド[・･]?ゴルフ|ゲートボール|練習場|打ち?っ?放し|ミニゴルフ|フットゴルフ|ディスクゴルフ/;
 const RANGE = /練習場|打ち?っ?放し|打ちっぱなし|ドライビングレンジ|ゴルフレンジ|インドア|シミュレーション|ゴルフスタジオ|パター|パット|ゲートボール|パークゴルフ|グラウンドゴルフ|グランドゴルフ/;
 for (const c of courses) {
   c.name = c.tags.name || c.tags['name:ja'] || c.tags.official_name || c.tags.operator || '';
@@ -234,6 +255,13 @@ for (const c of courses) {
 }
 // unnamed course outlines: borrow the name of a course point (or another named outline) inside / next to it
 {
+  // 1) a clubhouse / sport=golf name inside the outline
+  for (const c of courses) {
+    if (c.name || c.point || c.diag < 300) continue;
+    const inside = nameSrcs.filter((n) => n.c[0] >= c.bb[0] - 0.003 && n.c[0] <= c.bb[2] + 0.003 && n.c[1] >= c.bb[1] - 0.003 && n.c[1] <= c.bb[3] + 0.003 && (inRings(n.c, c.rings) || dist(n.c, c.c) < c.diag / 2 + 200) && !NOT_GOLF_EARLY.test(n.name));
+    inside.sort((a, b) => (b.strong ? 1 : 0) - (a.strong ? 1 : 0) || (GOLFNAME.test(b.name) ? 1 : 0) - (GOLFNAME.test(a.name) ? 1 : 0));
+    if (inside[0]) { c.name = inside[0].name; c.nameFrom = 'clubhouse'; }
+  }
   const named = courses.filter((c) => c.name);
   for (const c of courses) {
     if (c.name || c.point || c.diag < 300) continue;
@@ -298,7 +326,43 @@ for (const f of features) {
     else { const d = dist(c.c, f.c); score = d < (f.kind === 'water' ? 900 : 1500) ? 1000 + d : Infinity; }
     if (score < bestScore) { bestScore = score; best = c; }
   }
-  if (best) best.f.push(f);
+  if (best) { best.f.push(f); f.assigned = true; }
+}
+
+// golf features that belong to no course outline: cluster them (single-link, 350m) into new courses
+{
+  const loose = features.filter((f) => !f.assigned && ['hole', 'green', 'tee', 'bunker', 'fairway'].includes(f.kind));
+  const cell = 0.004, grid2 = new Map();
+  loose.forEach((f, i) => { const k = `${Math.floor(f.c[0] / cell)},${Math.floor(f.c[1] / cell)}`; (grid2.get(k) || grid2.set(k, []).get(k)).push(i); });
+  const comp = new Int32Array(loose.length).fill(-1);
+  let nComp = 0;
+  for (let i = 0; i < loose.length; i++) {
+    if (comp[i] >= 0) continue;
+    const stack = [i]; comp[i] = nComp;
+    while (stack.length) {
+      const a = loose[stack.pop()];
+      const gy = Math.floor(a.c[0] / cell), gx = Math.floor(a.c[1] / cell);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const j of grid2.get(`${gy + dy},${gx + dx}`) || []) {
+        if (comp[j] < 0 && dist(a.c, loose[j].c) < 350) { comp[j] = nComp; stack.push(j); }
+      }
+    }
+    nComp++;
+  }
+  const groups = Array.from({ length: nComp }, () => []);
+  loose.forEach((f, i) => groups[comp[i]].push(f));
+  let made = 0;
+  for (const g of groups) {
+    const greens = g.filter((f) => f.kind === 'green').length, holesN = g.filter((f) => f.kind === 'hole').length;
+    if (greens < 4 && holesN < 3) continue;
+    const bb = bboxOf(g.flatMap((f) => f.rings));
+    const c = [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
+    const diag = dist([bb[0], bb[1]], [bb[2], bb[3]]);
+    const src = nameSrcs.filter((n) => dist(n.c, c) < diag / 2 + 600 && !NOT_GOLF_EARLY.test(n.name)).sort((a, b) => (b.strong ? 1 : 0) - (a.strong ? 1 : 0) || dist(a.c, c) - dist(b.c, c))[0];
+    const ring = [[bb[0], bb[1]], [bb[0], bb[3]], [bb[2], bb[3]], [bb[2], bb[1]], [bb[0], bb[1]]];
+    const course = { id: `osm-cluster-${Math.round(c[0] * 1e5)}-${Math.round(c[1] * 1e5)}`, tags: {}, rings: [ring], bb, c, diag, name: src ? src.name : UNNAMED, unnamed: !src, f: g, fromCluster: true };
+    list.push(course); made++;
+  }
+  log('courses from feature clusters', made);
 }
 
 // prefecture lookup
@@ -337,7 +401,7 @@ for (const c of list) {
   // bbox from features for POI courses
   let bb = c.bb;
   if (c.point && c.f.length) bb = bboxOf(c.f.flatMap((f) => f.rings));
-  if (c.unnamed && holes.length < 3) continue;
+  if (c.unnamed && holes.length < 3 && greens.length < 4 && !(c.diag > 900 && !c.point)) continue;
   const pref = prefOf(c.c);
   if (c.unnamed) c.name = `${UNNAMED}（${pref}）`;
   const has = holes.length + greens.length;
@@ -350,7 +414,7 @@ for (const c of list) {
     p: pref, h: t.holes ? parseInt(t.holes, 10) || undefined : undefined,
     w: t.website || t['contact:website'] || t.url || undefined, ph: t.phone || t['contact:phone'] || undefined,
     hm: holes.length || undefined, gm: greens.length || undefined, d: has ? 1 : undefined,
-    op: t.operator || undefined, ac: t.access === 'private' ? 'private' : undefined,
+    op: t.operator || undefined, ac: t.access === 'private' ? 'private' : undefined, un: c.unnamed ? 1 : undefined,
   });
   if (has) {
     const body = JSON.stringify({ v: 1, id: c.id, n: c.name, holes, greens, tees, bunkers, water, fairways, pins });
@@ -358,6 +422,77 @@ for (const c of list) {
     fs.writeFileSync(`${OUT_DIR}/c/${c.id}.json`, body);
   }
 }
+// ---------------- official lists (Accordia / PGM) and Wikipedia: link, rename, or add ----------------
+{
+  const norm = (s) => String(s || '').normalize('NFKC').toLowerCase().replace(/[ァ-ヶ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60)).replace(/ゖ/g, 'が').replace(/[\s・･\-‐ー－_.'’"()（）「」&＆]/g, '');
+  const core = (s) => norm(s).replace(/(かんとりー|かんつりー|かんとり|かんつり)(くらぶ|倶楽部)|ごるふ(くらぶ|倶楽部)|ごるふこーす|ごるふこす|ごるふ場|ごるふりんくす|countryclub|golfclub|golfcourse|[gc]c$|倶楽部|くらぶ|こーす|こす$|あこーでぃあごるふ|pgm/g, '');
+  const sim = (a, b) => { const x = core(a), y = core(b); if (x.length < 2 || y.length < 2) return false; return x === y || (x.length >= 3 && y.includes(x)) || (y.length >= 3 && x.includes(y)); };
+  const ext = [];
+  for (const f of ['src-chains.json', 'src-wikipedia.json']) {
+    const p = new URL('./' + f, import.meta.url);
+    if (fs.existsSync(p)) for (const e of JSON.parse(fs.readFileSync(p, 'utf8'))) ext.push({ ...e, op: e.chain || e.op });
+  }
+  let linked = 0, renamed = 0, added = 0;
+  for (const e of ext) {
+    if (!e.name || NOT_GOLF.test(e.name)) continue;
+    const hasPos = Number.isFinite(e.lat);
+    const near = (c, km) => !hasPos || dist([c.a, c.o], [e.lat, e.lon]) < km * 1000;
+    const match = index.find((c) => !c.un && sim(c.n, e.name) && near(c, 40));
+    if (match) { if (e.op && !match.op) match.op = e.op; if (e.url) match.w ||= e.url; linked++; continue; }
+    if (!hasPos) continue;
+    const r = e.precise ? 6 : 15;
+    const un = index.filter((c) => c.un && near(c, r)).sort((a, b) => dist([a.a, a.o], [e.lat, e.lon]) - dist([b.a, b.o], [e.lat, e.lon]))[0];
+    if (un) { un.n = e.name; delete un.un; un.op = e.op; if (e.url) un.w = e.url; renamed++; continue; }
+    index.push({ id: 'ext-' + core(e.name).slice(0, 24) + '-' + Math.round(e.lat * 1e3), n: e.name, a: Math.round(e.lat * 1e5) / 1e5, o: Math.round(e.lon * 1e5) / 1e5, p: prefOf([e.lat, e.lon]), op: e.op, w: e.url, ap: e.precise ? undefined : 1, src: e.chain ? 'official' : 'wikipedia' });
+    added++;
+  }
+  // unify operator spellings
+  for (const c of index) if (c.op) { if (/accordia|アコーディア/i.test(c.op)) c.op = 'アコーディア・ゴルフ'; else if (/pacific golf|^pgm/i.test(c.op)) c.op = 'PGM'; else if (/東急/.test(c.op)) c.op = '東急リゾーツ&ステイ'; else if (/東建/.test(c.op)) c.op = '東建コーポレーション'; }
+  // operator from the name itself
+  for (const c of index) if (!c.op) { if (/アコーディア/.test(c.n)) c.op = 'アコーディア・ゴルフ'; else if (/^PGM|ＰＧＭ/.test(c.n)) c.op = 'PGM'; else if (/東急/.test(c.n)) c.op = '東急リゾーツ&ステイ'; else if (/東建/.test(c.n)) c.op = '東建コーポレーション'; }
+  log(`official/wiki: linked ${linked}, renamed ${renamed}, added ${added}`);
+}
+
+// ---------------- town names (国土地理院 reverse geocoder, cached) ----------------
+{
+  const cacheF = new URL('./muni-cache.json', import.meta.url);
+  const cache = fs.existsSync(cacheF) ? JSON.parse(fs.readFileSync(cacheF, 'utf8')) : {};
+  let muniTable = {};
+  try {
+    const js = await (await fetch('https://maps.gsi.go.jp/js/muni.js')).text();
+    for (const m of js.matchAll(/GSI\.MUNI_ARRAY\["(\d+)"\]\s*=\s*'([^']+)'/g)) { const p = m[2].split(','); muniTable[String(Number(m[1]))] = p[1] + p[3]; }
+  } catch {}
+  let calls = 0;
+  for (const c of index) {
+    const k = `${c.a.toFixed(4)},${c.o.toFixed(4)}`;
+    if (!(k in cache) && Object.keys(muniTable).length) {
+      try {
+        const j = await (await fetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${c.a}&lon=${c.o}`)).json();
+        const r = j.results; cache[k] = r ? (muniTable[String(Number(r.muniCd))] || '') + (r.lv01Nm && r.lv01Nm !== '－' ? r.lv01Nm : '') : '';
+      } catch { cache[k] = ''; }
+      if (++calls % 50 === 0) { fs.writeFileSync(cacheF, JSON.stringify(cache)); log('reverse geocoded', calls); }
+      await new Promise((res) => setTimeout(res, 60));
+    }
+    if (cache[k]) { c.ad = cache[k]; if (c.un) c.n = `${UNNAMED}（${cache[k].replace(/^(北海道|東京都|大阪府|京都府|.{2,3}県)/, '')}）`; }
+  }
+  fs.writeFileSync(cacheF, JSON.stringify(cache));
+  log('town names', index.filter((c) => c.ad).length);
+}
+
+// hiragana readings from Wikipedia's 日本のゴルフ場一覧 (wiki-list.txt), so 「かすみがせき」 finds 霞ヶ関
+{
+  const f = new URL('./wiki-list.txt', import.meta.url);
+  if (fs.existsSync(f)) {
+    const t = fs.readFileSync(f, 'utf8');
+    const nz = (s) => s.normalize('NFKC').replace(/[\s・･]/g, '');
+    const map = new Map();
+    for (const m of t.matchAll(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*（([ぁ-んァ-ヶー・a-zA-Zａ-ｚＡ-Ｚ0-9０-９\s]+)）/g)) map.set(nz(m[1].trim()), m[2].trim());
+    let n = 0;
+    for (const c of index) if (!c.k && map.has(nz(c.n))) { c.k = map.get(nz(c.n)); n++; }
+    log('readings', n);
+  }
+}
+
 // supplement: Wikidata golf courses (wd.json from tools/README) that OpenStreetMap does not have yet
 const WD = new URL('./wd.json', import.meta.url);
 if (fs.existsSync(WD)) {

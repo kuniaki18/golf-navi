@@ -19,7 +19,7 @@ export function initCourses(onSelect) {
   let timer;
   const rerun = () => { clearTimeout(timer); timer = setTimeout(run, 120); };
   $('#courseKw').addEventListener('input', rerun);
-  for (const id of ['prefSel', 'courseSort', 'fltHoles', 'fltFav', 'fltRecent']) $('#' + id).addEventListener('change', () => {
+  for (const id of ['prefSel', 'courseSort', 'fltHoles', 'fltFav', 'fltRecent', 'fltOp']) $('#' + id).addEventListener('change', () => {
     state.ui.prefName = $('#prefSel').value; state.ui.courseSort = $('#courseSort').value;
     const pi = PREFS.indexOf($('#prefSel').value); if (pi >= 0) { state.ui.pref = pi + 1; $('#bkPref').value = pi + 1; }
     save('ui'); run();
@@ -28,6 +28,7 @@ export function initCourses(onSelect) {
   $('#btnSearchGora').onclick = gora;
   $('#btnMoreCourses').onclick = () => { shown += 60; render(); };
   $('#courseList').addEventListener('click', onClick);
+  fetch('data/community/_index.json').then((r) => (r.ok ? r.json() : {})).then((j) => { commIdx = j || {}; render(); }).catch(() => {});
   bundledCourses().then((all) => {
     const info = bundleInfo();
     $('#courseCount').textContent = all.length
@@ -53,8 +54,9 @@ async function run() {
   const pref = $('#prefSel').value;
   let list = await searchCourses(kw, { pref: pref || undefined });
   if (!kw && !pref && myPos) list = await coursesNear(myPos.lat, myPos.lon, 60);
-  if ($('#fltHoles').checked) list = list.filter((c) => c.holesMapped > 0);
+  if ($('#fltHoles').checked) list = list.filter((c) => c.holesMapped > 0 || commIdx[c.id]);
   if ($('#fltFav').checked) list = list.filter((c) => state.favorites?.[c.id]);
+  const op = $('#fltOp').value; if (op) list = list.filter((c) => (c.operator || '').includes(op));
   if ($('#fltRecent').checked) { const rec = recentIds(); list = list.filter((c) => rec.has(c.id)); }
   const sort = $('#courseSort').value;
   for (const c of list) c._d = myPos ? dist(myPos, c) / 1000 : null;
@@ -70,8 +72,12 @@ async function run() {
 }
 function recentIds() { return new Set((state.rounds || []).map((r) => r.courseId).filter(Boolean)); }
 
+let commIdx = {};
 function badge(c) {
+  const comm = commIdx[c.id];
+  if (comm && !(c.holesMapped >= 9)) return `<span class="pill good">みんなの地図 ${comm}H</span>`;
   if (c.holesMapped >= 9) return `<span class="pill good">ホールデータ ${c.holesMapped}H</span>`;
+  if (c.approx) return '<span class="pill muted-pill">位置は市町村の目安</span>';
   if (c.holesMapped) return `<span class="pill">一部ホール ${c.holesMapped}H</span>`;
   if (c.greensMapped) return `<span class="pill">グリーン ${c.greensMapped}</span>`;
   const mine = Object.keys(state.userHoles?.[c.id] || {}).length;
@@ -86,7 +92,7 @@ function render() {
       <div class="ci-main">
         <h3>${esc(c.name)}</h3>
         <div class="meta">
-          ${c.pref ? `<span>${esc(c.pref)}</span>` : c.address ? `<span>${esc(c.address)}</span>` : ''}
+          ${c.address || c.pref ? `<span>${esc(c.address || c.pref)}</span>` : ''}${c.operator ? `<span>${esc(c.operator)}</span>` : ''}
           ${c._d != null ? `<span>${c._d < 10 ? c._d.toFixed(1) : Math.round(c._d)}km</span>` : ''}
           ${c.holes ? `<span>${c.holes}H</span>` : ''}
           ${c.ic ? `<span>${esc(c.ic)} IC ${esc(c.icDistance ?? '')}km</span>` : ''}

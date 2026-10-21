@@ -93,21 +93,22 @@ async function gsiElevation(p) {
   return Number.isFinite(v) ? { v, src: j.hsrc || 'GSI' } : null;
 }
 export async function elevations(points) {
-  const out = [];
-  for (const p of points) {
-    const k = ek(p);
-    if (!elevCache.has(k)) {
+  const todo = [...new Set(points.map(ek))].filter((k) => !elevCache.has(k));
+  const byKey = new Map(points.map((p) => [ek(p), p]));
+  // a few requests in parallel keeps green analysis fast without hammering the service
+  const queue = todo.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const k = queue.shift(); const p = byKey.get(k);
       let r = null;
       try { r = await gsiElevation(p); } catch {}
-      if (!r) {
-        try { const j = await fetchJSON(`https://api.open-meteo.com/v1/elevation?latitude=${p.lat}&longitude=${p.lon}`); r = { v: j.elevation?.[0], src: 'Open-Meteo' }; } catch {}
-      }
+      if (!r) { try { const j = await fetchJSON(`https://api.open-meteo.com/v1/elevation?latitude=${p.lat}&longitude=${p.lon}`); r = { v: j.elevation?.[0], src: 'Open-Meteo' }; } catch {} }
       elevCache.set(k, r);
-      if (elevCache.size > 400) elevCache.delete(elevCache.keys().next().value);
     }
-    out.push(elevCache.get(k)?.v);
-  }
-  return out;
+  };
+  await Promise.all(Array.from({ length: Math.min(5, todo.length) }, worker));
+  while (elevCache.size > 600) elevCache.delete(elevCache.keys().next().value);
+  return points.map((p) => elevCache.get(ek(p))?.v);
 }
 export function elevationSource(p) { return elevCache.get(ek(p))?.src || ''; }
 
