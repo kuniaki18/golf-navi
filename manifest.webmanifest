@@ -1,6 +1,6 @@
 {
-  "name": "Golf Navi",
-  "short_name": "Golf Navi",
+  "name": "KUNIKUNIゴルフアプリ",
+  "short_name": "KUNIKUNI",
   "description": "GPS距離計・番手アドバイス・コース攻略・スコア・ショットトレーサー・天気とウェア・仲間とコンペ・最安予約",
   "lang": "ja",
   "start_url": "./",

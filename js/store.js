@@ -86,7 +86,7 @@ export function exportBundle({ includeRounds = true } = {}) {
 }
 /** merge: newer note/pin wins, rounds are added by id */
 export function importBundle(b) {
-  if (!b || b.app !== 'golf-navi') throw new Error('Golf Navi のファイルではありません');
+  if (!b || b.app !== 'golf-navi') throw new Error('KUNIKUNIゴルフのファイルではありません');
   let notes = 0, pins = 0, rounds = 0;
   for (const [cid, holes] of Object.entries(b.notes || {})) {
     state.notes[cid] ??= {};

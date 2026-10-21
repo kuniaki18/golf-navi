@@ -1,16 +1,18 @@
 import { $, $$, esc, toast, copyText, shareOrDownload } from './util.js';
 import { state, save, exportBundle, importBundle, DEFAULT_CLUBS } from './store.js';
-import { initNavi, onNaviShown, loadCourse, refreshNavi, fillShotClubs } from './navi.js';
+import { initNavi, onNaviShown, loadCourse, refreshNavi, fillShotClubs, applyImagery } from './navi.js';
+import { openBook } from './coursebook.js';
+import { initSwing } from './swing.js';
 import { initCourses } from './courses.js';
 import { initScore, syncCourse } from './score.js';
 import { initTracer } from './tracer.js';
 import { initBooking } from './booking.js';
 import { initAnalysis, renderAnalysis, restoreCoach } from './analysis.js';
 import { initWeather, loadForecast } from './weather.js';
-import { initGroup, onGroupShown } from './group.js';
+import { initGroup, onGroupShown, shareCourseIntel } from './group.js';
 
-const TABS = ['navi', 'score', 'video', 'weather', 'group', 'menu', 'course', 'booking', 'analysis', 'settings'];
-const PARENT = { course: 'menu', booking: 'menu', analysis: 'menu', settings: 'menu' };
+const TABS = ['navi', 'score', 'video', 'weather', 'group', 'menu', 'course', 'booking', 'analysis', 'settings', 'book'];
+const PARENT = { course: 'menu', booking: 'menu', analysis: 'menu', settings: 'menu', book: 'navi' };
 
 function goto(tab) {
   if (!TABS.includes(tab)) tab = 'navi';
@@ -22,6 +24,7 @@ function goto(tab) {
   if (tab === 'analysis') renderAnalysis();
   if (tab === 'weather') loadForecast(false);
   if (tab === 'group') onGroupShown();
+  if (tab === 'book') openBook();
 }
 
 function courseChip() {
@@ -37,6 +40,9 @@ function initSettings() {
     el.addEventListener('change', () => { s[key] = num ? Number(el.value) : el.value.trim(); save('settings'); refreshNavi(); });
   };
   bind('setUnit', 'unit'); bind('setName', 'name'); bind('setClaudeKey', 'claudeKey'); bind('setModel', 'model');
+  bind('setImagery', 'imagery');
+  $('#setImagery').value = s.imagery || 'gsi';
+  $('#setImagery').addEventListener('change', applyImagery);
   bind('setRakutenId', 'rakutenId'); bind('setRakutenKey', 'rakutenKey'); bind('setRakutenAff', 'rakutenAff');
   $('#setSun').checked = !!s.sun;
   $('#setSun').onchange = () => setSun($('#setSun').checked);
@@ -57,11 +63,11 @@ function initSettings() {
   });
   $('#btnExportNotes').onclick = () => {
     const b = exportBundle({ includeRounds: false });
-    shareOrDownload({ title: 'Golf Navi 攻略メモ', text: '攻略メモとグリーン位置です。Golf Naviの設定 →「読み込み」で取り込めます', filename: `golfnavi-notes-${new Date().toISOString().slice(0, 10)}.json`, blob: new Blob([JSON.stringify(b)], { type: 'application/json' }) });
+    shareOrDownload({ title: 'KUNIKUNIゴルフ 攻略メモ', text: '攻略メモとグリーン位置です。KUNIKUNIゴルフの設定 →「読み込み」で取り込めます', filename: `golfnavi-notes-${new Date().toISOString().slice(0, 10)}.json`, blob: new Blob([JSON.stringify(b)], { type: 'application/json' }) });
   };
   $('#btnExportAll').onclick = () => {
     const b = exportBundle({ includeRounds: true });
-    shareOrDownload({ title: 'Golf Navi バックアップ', text: 'Golf Navi のバックアップ', filename: `golfnavi-backup-${new Date().toISOString().slice(0, 10)}.json`, blob: new Blob([JSON.stringify(b)], { type: 'application/json' }) });
+    shareOrDownload({ title: 'KUNIKUNIゴルフ バックアップ', text: 'KUNIKUNIゴルフのバックアップ', filename: `golfnavi-backup-${new Date().toISOString().slice(0, 10)}.json`, blob: new Blob([JSON.stringify(b)], { type: 'application/json' }) });
   };
   $('#importFile').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -75,7 +81,7 @@ function initSettings() {
   const url = location.origin + location.pathname;
   $('#appUrl').textContent = url;
   $('#btnCopyUrl').onclick = () => copyText(url);
-  $('#btnShareApp').onclick = () => shareOrDownload({ title: 'Golf Navi', text: `ゴルフアプリ「Golf Navi」。開いて「ホーム画面に追加」でインストールできるよ\n${url}` });
+  $('#btnShareApp').onclick = () => shareOrDownload({ title: 'KUNIKUNIゴルフ', text: `ゴルフアプリ「KUNIKUNIゴルフ」。開いて「ホーム画面に追加」でインストールできるよ\n${url}` });
 }
 
 function renderClubs() {
@@ -133,11 +139,16 @@ function boot() {
   });
   $('#openSettings').onclick = () => goto('settings');
   initSettings();
-  initCourses(async () => { courseChip(); syncCourse(); goto('navi'); toast(`${state.course.name} を読み込みます`); await loadCourse(false); });
+  initCourses(async (c, mode) => { courseChip(); syncCourse(); goto(mode === 'book' ? 'book' : 'navi'); if (mode !== 'book') toast(`${state.course.name} を読み込みます`); await loadCourse(false); if (mode === 'book') openBook(); });
+  window.addEventListener('open-book', () => goto('book'));
+  $('#btnShareIntel').onclick = () => shareCourseIntel();
+  window.addEventListener('course-intel', (e) => { if (e.detail.courseId === state.course?.id) loadCourse(false); toast('仲間から攻略情報が届きました'); });
+  $('#videoTabs').onclick = (e) => { const b = e.target.closest('[data-v]'); if (!b) return; $$('#videoTabs button').forEach((x) => x.classList.toggle('on', x === b)); $$('.vpane').forEach((p) => (p.hidden = p.dataset.vp !== b.dataset.v)); };
   window.addEventListener('course-picked', async () => { courseChip(); syncCourse(); goto('navi'); await loadCourse(false); });
   window.addEventListener('goto-tab', (e) => goto(e.detail));
   initScore(() => renderAnalysis());
   initTracer();
+  initSwing();
   initBooking();
   initAnalysis(); restoreCoach();
   initWeather();

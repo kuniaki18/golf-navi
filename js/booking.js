@@ -24,7 +24,7 @@ export function initBooking() {
   const tomorrow = new Date(Date.now() + 864e5);
   $('#bkStart').value = fmtDate(tomorrow);
   $('#bkStart').min = fmtDate(new Date());
-  $('#bkPref').onchange = () => { state.ui.pref = Number($('#bkPref').value); $('#prefSel').value = state.ui.pref; save('ui'); };
+  $('#bkPref').onchange = () => { state.ui.pref = Number($('#bkPref').value); save('ui'); };
   $('#btnBkSearch').onclick = run;
   $('#btnBkStop').onclick = () => { stop = true; };
   $('#bkCal').onclick = (e) => { const d = e.target.closest('[data-date]'); if (d && results[d.dataset.date]) { selected = d.dataset.date; renderCal(); renderPlans(); } };

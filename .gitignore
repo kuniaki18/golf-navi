@@ -1,2 +1,5 @@
 *.partial
 .DS_Store
+tools/node_modules/
+tools/japan-pref.geojson
+*.osm.pbf

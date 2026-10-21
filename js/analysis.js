@@ -3,6 +3,7 @@ import { $, esc, toast, md } from './util.js';
 import { state, save } from './store.js';
 import { total, isGIR } from './score.js';
 import { askClaude, COACH_SYSTEM, hasAI } from './ai.js';
+import { swingStats } from './swing.js';
 
 // rough amateur benchmarks per 18 holes by score level (approximate guide values)
 const BENCH = {
@@ -31,7 +32,7 @@ export function computeStats(rounds = state.rounds) {
   const scores = [];
   for (const r of rs) {
     const t = total(r);
-    scores.push({ date: r.date, score: Math.round((t.strokes / t.played) * 18), raw: t.strokes, played: t.played, course: r.course });
+    scores.push({ date: r.date, score: Math.round((t.strokes / t.played) * 18), raw: t.strokes, played: t.played, course: r.course, diff: ((t.strokes - t.par) / t.played) * 18 });
     for (const h of r.holes) {
       if (!h.strokes) continue;
       holes++;
@@ -46,8 +47,12 @@ export function computeStats(rounds = state.rounds) {
     }
   }
   const per18 = (v) => (v / holes) * 18;
+  // estimated handicap: best 8 of the last 20 differentials (course rating ≈ par, slope 113)
+  const lastDiffs = scores.slice(0, 20).map((x) => x.diff).sort((a, b) => a - b);
+  const useN = lastDiffs.length >= 20 ? 8 : Math.max(1, Math.round(lastDiffs.length * 0.4));
+  const hcp = lastDiffs.slice(0, useN).reduce((a, b) => a + b, 0) / useN;
   return {
-    rounds: rs.length, holes, scores: scores.reverse(),
+    rounds: rs.length, holes, hcp, scores: scores.reverse(),
     avg: scores.reduce((s, x) => s + x.score, 0) / scores.length,
     best: Math.min(...scores.map((s) => s.score)),
     putts: per18(putts), fw: fwOpp ? (fwHit / fwOpp) * 100 : null, fwL, fwR, fwOpp,
@@ -122,6 +127,9 @@ export function renderAnalysis() {
       tile('FWキープ', st.fw == null ? '--' : st.fw.toFixed(0) + '%', st.fwOpp ? `左${st.fwL}・右${st.fwR}回ミス` : '入力するとミス傾向が出ます', st.fw == null ? '' : c(st.fw, b.fw, true)),
       tile('OB/ペナ', st.pen.toFixed(1), `目安 ${b.pen.toFixed(1)}/R`, c(st.pen, b.pen, false)),
       tile('3パット', st.three.toFixed(1), `目安 ${b.three.toFixed(1)}/R`, c(st.three, b.three, false)),
+      tile('推定ハンディ', st.hcp.toFixed(1), 'パー基準の目安値'),
+      tile('ダボ以上', st.dbl.toFixed(1), `目安 ${b.dbl.toFixed(1)}ホール/R`, c(st.dbl, b.dbl, false)),
+      tile('パー5平均', st.par5 == null ? '--' : st.par5.toFixed(2), `パー3 ${st.par3?.toFixed(2) ?? '--'} / パー4 ${st.par4?.toFixed(2) ?? '--'}`),
     ].join('');
     const is = issues(st, b);
     const maxLost = Math.max(1, ...is.map((x) => x.strokesLost));
@@ -186,6 +194,7 @@ async function aiCoach() {
 課題ランキング(目安との差): ${JSON.stringify(issues(st, bench(target)).map((x) => ({ name: x.name, val: +x.val.toFixed(1), goal: +x.goal.toFixed(1), strokesLost: +x.strokesLost.toFixed(1) })))}
 クラブのキャリー設定(y): ${JSON.stringify(state.clubs)}
 GPS実測距離: ${JSON.stringify(clubStats())}
+スイング解析の履歴（点数と弱点）: ${JSON.stringify(swingStats())}
 直近ラウンド詳細 [par, 打数, パット, ティーショット(hit/left/right), ペナ, バンカー(1=入った,2=寄せワン)]: ${JSON.stringify(recent)}`;
   try {
     const text = await askClaude({ system: COACH_SYSTEM, prompt, maxTokens: 2500, onText: (t) => (out.innerHTML = md(t)) });

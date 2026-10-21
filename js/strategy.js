@@ -10,7 +10,7 @@ function doglegs(line) {
     acc += dist(line[i - 1], line[i]);
     const b1 = bearing(line[i - 1], line[i]), b2 = bearing(line[i], line[i + 1]);
     let turn = ((b2 - b1 + 540) % 360) - 180;
-    if (Math.abs(turn) >= 18) out.push({ at: m2y(acc), dir: turn > 0 ? '右' : '左', deg: Math.abs(Math.round(turn)) });
+    if (Math.abs(turn) >= 22) out.push({ at: m2y(acc), dir: turn > 0 ? '右' : '左', deg: Math.abs(Math.round(turn)) });
   }
   return out;
 }

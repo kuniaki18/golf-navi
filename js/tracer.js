@@ -154,7 +154,7 @@ function draw() {
     ctx.restore();
   }
   ctx.save(); ctx.globalAlpha = 0.7; ctx.fillStyle = '#fff'; ctx.font = `600 ${Math.round(cv.width / 40)}px "Barlow Condensed", sans-serif`;
-  ctx.fillText('GOLF NAVI', cv.width - cv.width / 7, cv.height - cv.width / 40); ctx.restore();
+  ctx.fillText('KUNIKUNI GOLF', cv.width - cv.width / 7, cv.height - cv.width / 40); ctx.restore();
 }
 function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 
@@ -231,6 +231,6 @@ async function exportVideo() {
   const type = (mime || 'video/webm').split(';')[0];
   const blob = new Blob(chunks, { type });
   $('#exportStatus').textContent = `完成しました（${(blob.size / 1e6).toFixed(1)}MB）`;
-  await shareOrDownload({ title: 'ショットトレーサー', text: 'Golf Navi', filename: `shot-${Date.now()}.${type.includes('mp4') ? 'mp4' : 'webm'}`, blob });
+  await shareOrDownload({ title: 'ショットトレーサー', text: 'KUNIKUNIゴルフ', filename: `shot-${Date.now()}.${type.includes('mp4') ? 'mp4' : 'webm'}`, blob });
   draw();
 }

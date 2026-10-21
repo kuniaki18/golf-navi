@@ -93,6 +93,18 @@ function receive(code, p) {
     case 'sync-req': if (p.from.id !== me().id) scheduleSync(code, p.at); break;
     case 'sync': mergeSync(r, p.data); break;
     case 'hello': sysMsg(r, p, `${p.from.name}さんが参加しました`); break;
+    case 'course-intel': {
+      // hole registrations + strategy notes for one course; newer entries win
+      const { courseId, courseName, holes = {}, notes = {} } = p;
+      let n = 0;
+      state.userHoles ??= {}; const uh = (state.userHoles[courseId] ??= {});
+      for (const [k, v] of Object.entries(holes)) if (!uh[k] || (v.updatedAt || 0) > (uh[k].updatedAt || 0)) { uh[k] = v; n++; }
+      state.notes[courseId] ??= {};
+      for (const [k, v] of Object.entries(notes)) if (!state.notes[courseId][k] || (v.updatedAt || 0) > (state.notes[courseId][k].updatedAt || 0)) { state.notes[courseId][k] = v; n++; }
+      sysMsg(r, p, `${p.from.name}さんが「${courseName}」の攻略情報を共有しました${p.from.id !== me().id ? `（${n}件更新）` : ''}`);
+      if (n && p.from.id !== me().id) window.dispatchEvent(new CustomEvent('course-intel', { detail: { courseId } }));
+      break;
+    }
   }
   save('group');
   if (code === active) renderRoom(); else renderRooms();
@@ -208,7 +220,7 @@ function inviteUrl() {
 }
 function invite() {
   const url = inviteUrl();
-  shareOrDownload({ title: 'Golf Navi 招待', text: `「${room().name}」に招待します。Golf Naviで開いてね（招待コード: ${active}）\n${url}` });
+  shareOrDownload({ title: 'KUNIKUNIゴルフ 招待', text: `「${room().name}」に招待します。KUNIKUNIゴルフで開いてね（招待コード: ${active}）\n${url}` });
 }
 
 function renderRooms() {
@@ -253,6 +265,21 @@ export async function sharePlanToGroup(plan) {
   catch (e) { toast(e.message); return false; }
 }
 export function hasGroup() { return !!active; }
+
+/** send this course's registered holes and notes to the active group */
+export async function shareCourseIntel() {
+  const c = state.course;
+  if (!c) { toast('コースを選んでください'); return; }
+  if (!active) { toast('先に「仲間」タブでグループを作ってください'); return; }
+  const holes = state.userHoles?.[c.id] || {}, notes = state.notes?.[c.id] || {};
+  if (!Object.keys(holes).length && !Object.keys(notes).length) { toast('共有できる登録ホールや攻略メモがまだありません'); return; }
+  try {
+    // keep each message under the relay limit by sending holes and notes separately when large
+    const parts = JSON.stringify({ holes, notes }).length > 2400 ? [{ holes }, { notes }] : [{ holes, notes }];
+    for (const part of parts) await send(active, { type: 'course-intel', courseId: c.id, courseName: c.name, ...part });
+    toast(`「${room().name}」に共有しました`);
+  } catch (e) { toast(e.message); }
+}
 
 function updateBadge() {
   const n = Object.entries(rooms()).reduce((s, [c, r]) => s + (c === active && document.querySelector('#tab-group.active') ? 0 : r.unread || 0), 0);

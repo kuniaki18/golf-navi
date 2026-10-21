@@ -3,14 +3,18 @@ import { state } from './store.js';
 
 export function hasAI() { return !!state.settings.claudeKey; }
 
-export async function askClaude({ system, prompt, maxTokens = 1800, onText }) {
+/** images: base64 JPEG strings (no data: prefix) sent before the text */
+export async function askClaude({ system, prompt, images = [], maxTokens = 1800, onText }) {
   const key = state.settings.claudeKey;
   if (!key) throw new Error('設定で Claude の APIキーを入力してください');
+  const content = images.length
+    ? [...images.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } })), { type: 'text', text: prompt }]
+    : prompt;
   const body = {
     model: state.settings.model || 'claude-sonnet-5-5',
     max_tokens: maxTokens,
     system,
-    messages: [{ role: 'user', content: prompt }],
+    messages: [{ role: 'user', content }],
     stream: !!onText,
   };
   const r = await fetch('https://api.anthropic.com/v1/messages', {

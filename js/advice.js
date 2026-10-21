@@ -23,7 +23,8 @@ export function playsLike(yards, c = {}) {
     d += adj; parts.push(`${c.head > 0 ? '向かい' : '追い'}風 ${Math.abs(c.head).toFixed(1)}m/s ${sign(adj)}y`);
   }
   if (c.elevM) {
-    const adj = m2y(c.elevM) * 1.0;
+    // uphill plays ~1y per 1y of rise; downhill helps a little less (longer hang time, steeper landing)
+    const adj = m2y(c.elevM) * (c.elevM > 0 ? 1.0 : 0.8);
     d += adj; parts.push(`${c.elevM > 0 ? '打ち上げ' : '打ち下ろし'} ${Math.abs(c.elevM).toFixed(0)}m ${sign(adj)}y`);
   }
   if (Number.isFinite(c.tempC) && c.tempC < 15) {
@@ -80,18 +81,34 @@ export function crossComponent(wx, shotBearing) {
   return -wx.speed * 0.8 * Math.sin(rel);
 }
 
-/** terrain elevation in meters for several points (Open-Meteo DEM ~90m) */
+/**
+ * terrain elevation in meters. 国土地理院 DEM (1m laser / 5m / 10m) first — precise enough for
+ * 打ち上げ・打ち下ろし — then Open-Meteo (~90m) outside Japan or on failure.
+ */
 const elevCache = new Map();
-export async function elevations(points) {
-  const keys = points.map((p) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`);
-  const missing = points.filter((p, i) => !elevCache.has(keys[i]));
-  if (missing.length) {
-    const lat = missing.map((p) => p.lat.toFixed(5)).join(',');
-    const lon = missing.map((p) => p.lon.toFixed(5)).join(',');
-    const j = await fetchJSON(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
-    missing.forEach((p, i) => elevCache.set(`${p.lat.toFixed(4)},${p.lon.toFixed(4)}`, j.elevation?.[i]));
-  }
-  return keys.map((k) => elevCache.get(k));
+const ek = (p) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
+async function gsiElevation(p) {
+  const j = await fetchJSON(`https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon=${p.lon.toFixed(6)}&lat=${p.lat.toFixed(6)}&outtype=JSON`, {}, 8000);
+  const v = Number(j.elevation);
+  return Number.isFinite(v) ? { v, src: j.hsrc || 'GSI' } : null;
 }
+export async function elevations(points) {
+  const out = [];
+  for (const p of points) {
+    const k = ek(p);
+    if (!elevCache.has(k)) {
+      let r = null;
+      try { r = await gsiElevation(p); } catch {}
+      if (!r) {
+        try { const j = await fetchJSON(`https://api.open-meteo.com/v1/elevation?latitude=${p.lat}&longitude=${p.lon}`); r = { v: j.elevation?.[0], src: 'Open-Meteo' }; } catch {}
+      }
+      elevCache.set(k, r);
+      if (elevCache.size > 400) elevCache.delete(elevCache.keys().next().value);
+    }
+    out.push(elevCache.get(k)?.v);
+  }
+  return out;
+}
+export function elevationSource(p) { return elevCache.get(ek(p))?.src || ''; }
 
 export const compass = (deg) => ['北', '北東', '東', '南東', '南', '南西', '西', '北西'][Math.round(deg / 45) % 8];

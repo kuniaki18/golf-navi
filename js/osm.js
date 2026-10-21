@@ -1,4 +1,5 @@
-// Course data from OpenStreetMap via the Overpass API (free, nationwide, no key).
+// Course data. Primary source: the nationwide dataset bundled with the app (built from OpenStreetMap,
+// see tools/extract.mjs). Fallback: the live Overpass API. Plus holes the user mapped themselves.
 import { centroid, dist, nearestOnLine, lineLength, fetchJSON, sleep } from './util.js';
 
 const ENDPOINTS = [
@@ -7,52 +8,66 @@ const ENDPOINTS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-export async function overpass(query, { onRetry } = {}) {
-  let lastErr;
-  // public servers are often busy: try every mirror, then back off and retry
-  for (let round = 0; round < 4; round++) {
+export async function overpass(query, { onRetry, rounds = 3 } = {}) {
+  for (let round = 0; round < rounds; round++) {
     for (const ep of ENDPOINTS) {
       try {
         const j = await fetchJSON(ep, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: 'data=' + encodeURIComponent(query),
-        }, 70000);
-        if (j.elements) return j;
-        lastErr = new Error('応答が不正です');
-      } catch (e) { lastErr = e; }
+        }, 60000);
+        if (j.elements && !/error|timed out|out of memory/i.test(j.remark || '')) return j;
+      } catch {}
     }
-    if (round < 3) { onRetry?.(round + 1); await sleep(3000 * 2 ** round); }
+    if (round < rounds - 1) { onRetry?.(round + 1); await sleep(3000 * 2 ** round); }
   }
   throw new Error('地図サーバーが混み合っています。少し待って「コースデータ再取得」を押してください');
 }
 
-/** bundled nationwide list (data/courses-jp.json) so searching works even when the servers are busy */
-let bundled = null;
+// ---------------- nationwide course index ----------------
+let bundled = null, bundledMeta = null;
 export async function bundledCourses() {
   if (bundled) return bundled;
-  try { const j = await fetchJSON('data/courses-jp.json'); bundled = j.courses.map((c) => ({ id: c.id, name: c.n, kana: c.k || '', lat: c.a, lon: c.o, bounds: c.b || null, holes: c.h || null, website: c.w || '', address: c.p || '', pref: c.p || '', source: 'osm' })); }
-  catch { bundled = []; }
+  try {
+    const j = await fetchJSON('data/courses-jp.json', {}, 45000);
+    bundledMeta = { count: j.count, withHoles: j.withHoles, generatedAt: j.generatedAt };
+    bundled = j.courses.map((c) => ({
+      id: c.id, name: c.n, kana: c.k || '', lat: c.a, lon: c.o, bounds: c.b || null, holes: c.h || null,
+      website: c.w || '', phone: c.ph || '', pref: c.p || '', address: c.p || '', operator: c.op || '',
+      hasDetail: !!c.d, holesMapped: c.hm || 0, greensMapped: c.gm || 0, private: c.ac === 'private', source: 'osm',
+      _s: searchKey(c.n + ' ' + (c.k || '') + ' ' + (c.op || '')),
+    }));
+  } catch { bundled = []; }
   return bundled;
 }
+export const bundleInfo = () => bundledMeta;
 
-function toCourse(el) {
-  const t = el.tags || {};
-  const c = el.center || (el.lat ? { lat: el.lat, lon: el.lon } : null);
-  if (!c) return null;
-  const b = el.bounds;
-  return {
-    id: `osm-${el.type}-${el.id}`,
-    name: t.name || t['name:ja'] || '名称不明のゴルフ場',
-    kana: t['name:ja-Hira'] || t['name:ja_kana'] || '',
-    lat: c.lat, lon: c.lon,
-    bounds: b ? [b.minlat, b.minlon, b.maxlat, b.maxlon] : null,
-    holes: t.holes ? Number(t.holes) : null,
-    phone: t.phone || t['contact:phone'] || '',
-    website: t.website || t['contact:website'] || '',
-    address: [t['addr:province'], t['addr:city'], t['addr:quarter'], t['addr:neighbourhood']].filter(Boolean).join(''),
-    source: 'osm',
-  };
+/** fold the many ways Japanese course names are written so search finds them */
+export function normalize(s) {
+  return String(s || '')
+    .normalize('NFKC').toLowerCase()
+    .replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60)) // katakana → hiragana
+    .replace(/ゖ/g, 'が')
+    .replace(/[\s・･\-‐ー－_.'’"()（）「」&＆]/g, '');
+}
+/** abbreviations golfers use: CC, GC, G … */
+function abbr(n) {
+  return n
+    .replace(/(かんとり|かんつり)(くらぶ|倶楽部)|countryclub/g, 'cc')
+    .replace(/ごるふ(くらぶ|倶楽部)|golfclub/g, 'gc')
+    .replace(/ごるふこす|golfcourse|golflinks|ごるふりんくす/g, 'g')
+    .replace(/ごるふ場|ごるふじょう/g, '')
+    .replace(/倶楽部/g, 'くらぶ');
+}
+const searchKey = (s) => { const n = normalize(s); return n + '|' + abbr(n); };
+
+export async function searchCourses(q, { pref } = {}) {
+  const all = await bundledCourses();
+  let list = pref ? all.filter((c) => c.pref === pref) : all;
+  const terms = String(q || '').trim().split(/[\s　]+/).map(normalize).filter(Boolean);
+  if (terms.length) list = list.filter((c) => terms.every((t) => c._s.includes(t) || c._s.includes(abbr(t))));
+  return list;
 }
 
 export async function coursesInPref(pref) {
@@ -61,133 +76,177 @@ export async function coursesInPref(pref) {
   if (hit.length) return hit;
   const q = `[out:json][timeout:60];area["name"="${pref}"]["admin_level"="4"]->.a;nwr["leisure"="golf_course"](area.a);out tags center bb;`;
   const j = await overpass(q);
-  return (j.elements || []).map(toCourse).filter(Boolean).filter((c) => c.name !== '名称不明のゴルフ場' || c.bounds);
+  return (j.elements || []).map(toCourse).filter(Boolean);
 }
 
 export async function coursesNear(lat, lon, km = 25) {
   const all = await bundledCourses();
   if (all.length) return all.filter((c) => dist({ lat, lon }, c) <= km * 1000);
-  const q = `[out:json][timeout:40];nwr["leisure"="golf_course"](around:${Math.round(km * 1000)},${lat},${lon});out tags center bb;`;
-  const j = await overpass(q);
+  const j = await overpass(`[out:json][timeout:40];nwr["leisure"="golf_course"](around:${Math.round(km * 1000)},${lat},${lon});out tags center bb;`);
   return (j.elements || []).map(toCourse).filter(Boolean);
 }
 
-/** find the OSM course closest to a coordinate (used to attach GORA courses to map data) */
+/** find the course closest to a coordinate (used to attach GORA courses to map data) */
 export async function matchCourse(lat, lon) {
   const list = await coursesNear(lat, lon, 3);
   list.sort((a, b) => dist({ lat, lon }, a) - dist({ lat, lon }, b));
   return list[0] || null;
 }
 
-function geomOf(el) {
-  if (el.geometry) return el.geometry.map((p) => ({ lat: p.lat, lon: p.lon }));
-  if (el.members) {
-    const outer = el.members.filter((m) => m.role !== 'inner' && m.geometry);
-    return outer.flatMap((m) => m.geometry.map((p) => ({ lat: p.lat, lon: p.lon })));
-  }
-  return [];
+function toCourse(el) {
+  const t = el.tags || {};
+  const c = el.center || (el.lat ? { lat: el.lat, lon: el.lon } : null);
+  if (!c || !(t.name || t['name:ja'])) return null;
+  const b = el.bounds;
+  return {
+    id: `osm-${el.type}-${el.id}`, name: t.name || t['name:ja'], kana: t['name:ja-Hira'] || '',
+    lat: c.lat, lon: c.lon, bounds: b ? [b.minlat, b.minlon, b.maxlat, b.maxlon] : null,
+    holes: t.holes ? Number(t.holes) : null, phone: t.phone || '', website: t.website || '', address: '', source: 'osm',
+  };
 }
 
-/** download holes, greens, tees, bunkers and water inside a course */
-export async function courseFeatures(course) {
+// ---------------- course detail (holes, greens, hazards) ----------------
+const EMPTY = () => ({ holes: [], greens: [], tees: [], bunkers: [], water: [], fairways: [], pins: [], source: 'none' });
+
+export async function courseFeatures(course, { onRetry, liveFallback = true } = {}) {
+  const id = course.osmId || course.id;
+  const known = (await bundledCourses()).find((x) => x.id === id);
+  if (/^osm-/.test(id) && (!known || known.hasDetail)) {
+    try { const j = await fetchJSON(`data/c/${id}.json`, {}, 30000); return { ...parseCompact(j), source: 'bundle' }; }
+    catch (e) { if (e.status && e.status !== 404) throw e; }
+  }
+  if (!liveFallback) return EMPTY();
+  // not in the bundle (new or unmapped course): ask the live server once
   let [s, w, n, e] = course.bounds || [course.lat - 0.012, course.lon - 0.015, course.lat + 0.012, course.lon + 0.015];
   const pad = 0.002; s -= pad; w -= pad; n += pad; e += pad;
-  const q = `[out:json][timeout:60][bbox:${s},${w},${n},${e}];
-(
-  way["golf"];
-  relation["golf"];
-  way["natural"="water"];
-  relation["natural"="water"];
-  way["natural"="wood"];
-);
-out geom;`;
-  const j = await overpass(q);
-  return parseFeatures(j.elements || []);
+  const j = await overpass(`[out:json][timeout:60][bbox:${s},${w},${n},${e}];(way["golf"];relation["golf"];way["natural"="water"];relation["natural"="water"];);out geom;`, { onRetry, rounds: 2 });
+  return { ...parseFeatures(j.elements || []), source: 'live' };
 }
 
+const pts = (flat) => { const out = []; for (let i = 0; i + 1 < flat.length; i += 2) out.push({ lat: flat[i], lon: flat[i + 1] }); return out; };
+let seq = 0;
+function poly(rings, kind) { const p = pts(rings[0] || []); return { id: `${kind}${seq++}`, pts: p, c: p.length ? centroid(p) : null }; }
+
+export function parseCompact(j) {
+  const f = EMPTY();
+  for (const h of j.holes || []) {
+    const p = pts(h.g); const ref = parseInt(h.r, 10);
+    f.holes.push({ id: `h${seq++}`, pts: p, c: centroid(p), ref: Number.isFinite(ref) ? ref : null, par: h.p || null, hcp: h.h || null, distTag: h.d || null, name: h.n || '' });
+  }
+  for (const [k, arr] of [['greens', j.greens], ['tees', j.tees], ['bunkers', j.bunkers], ['water', j.water], ['fairways', j.fairways]]) {
+    for (const rings of arr || []) { const x = poly(rings, k); if (x.c) f[k].push(x); }
+  }
+  for (const p of j.pins || []) { const q = pts(p); if (q.length) f.pins.push({ id: `p${seq++}`, pts: q, c: q[0] }); }
+  return f;
+}
+
+function geomOf(el) {
+  if (el.geometry) return el.geometry.map((p) => ({ lat: p.lat, lon: p.lon }));
+  if (el.members) return el.members.filter((m) => m.role !== 'inner' && m.geometry).flatMap((m) => m.geometry.map((p) => ({ lat: p.lat, lon: p.lon })));
+  return [];
+}
 export function parseFeatures(elements) {
-  const f = { holes: [], greens: [], tees: [], bunkers: [], water: [], fairways: [], pins: [], trees: [] };
+  const f = EMPTY();
   for (const el of elements) {
     const t = el.tags || {};
     const g = geomOf(el);
-    if (!g.length && el.type !== 'node') continue;
-    const kind = t.golf || (t.natural === 'water' ? 'water_hazard' : t.natural === 'wood' ? 'wood' : '');
-    const base = { id: `${el.type}/${el.id}`, pts: g, c: g.length ? centroid(g) : { lat: el.lat, lon: el.lon } };
-    switch (kind) {
-      case 'hole': {
-        const ref = parseInt(t.ref, 10);
-        f.holes.push({ ...base, ref: Number.isFinite(ref) ? ref : null, par: t.par ? parseInt(t.par, 10) : null, hcp: t.handicap ? parseInt(t.handicap, 10) : null, distTag: t.dist ? parseFloat(t.dist) : null, name: t.name || '' });
-        break;
-      }
-      case 'green': f.greens.push(base); break;
-      case 'tee': f.tees.push(base); break;
-      case 'bunker': f.bunkers.push(base); break;
-      case 'water_hazard': case 'lateral_water_hazard': f.water.push({ ...base, lateral: kind === 'lateral_water_hazard' }); break;
-      case 'fairway': f.fairways.push(base); break;
-      case 'pin': f.pins.push(base); break;
-      case 'wood': if (g.length > 4) f.trees.push(base); break;
-    }
+    if (!g.length) continue;
+    const kind = t.golf || (t.natural === 'water' ? 'water_hazard' : '');
+    const base = { id: `${el.type}/${el.id}`, pts: g, c: centroid(g) };
+    if (kind === 'hole') { const ref = parseInt(t.ref, 10); f.holes.push({ ...base, ref: Number.isFinite(ref) ? ref : null, par: t.par ? parseInt(t.par, 10) : null, hcp: t.handicap ? parseInt(t.handicap, 10) : null, distTag: t.dist ? parseFloat(t.dist) : null, name: t.name || '' }); }
+    else if (kind === 'green') f.greens.push(base);
+    else if (kind === 'tee') f.tees.push(base);
+    else if (kind === 'bunker') f.bunkers.push(base);
+    else if (kind === 'water_hazard' || kind === 'lateral_water_hazard') f.water.push(base);
+    else if (kind === 'fairway') f.fairways.push(base);
+    else if (kind === 'pin') f.pins.push(base);
   }
   return f;
 }
 
-/**
- * Build an ordered hole model. Each hole: { no, par, line, tee, green (polygon or null), center, lengthM }.
- * Courses with 27/36 holes repeat refs; those are kept as separate entries with a course label.
- */
-export function buildHoles(f) {
-  const holes = f.holes
-    .filter((h) => h.pts.length >= 2)
-    .map((h) => {
-      const end = h.pts[h.pts.length - 1];
-      let green = null, best = 90;
-      for (const gr of f.greens) {
-        const d = Math.min(dist(end, gr.c), ...gr.pts.map((p) => dist(end, p)));
-        if (d < best) { best = d; green = gr; }
-      }
-      const center = green ? green.c : end;
-      const lengthM = h.distTag ? (h.distTag > 50 ? h.distTag : null) : null;
-      return {
-        no: h.ref, par: h.par, hcp: h.hcp, name: h.name, line: h.pts,
-        tee: h.pts[0], green, center, lengthM: lengthM || lineLength(h.pts), osmId: h.id,
-      };
-    });
-  holes.sort((a, b) => (a.no ?? 99) - (b.no ?? 99));
-  // label duplicate hole numbers (27+ hole courses)
-  const seen = {};
-  for (const h of holes) {
-    if (h.no == null) continue;
-    seen[h.no] = (seen[h.no] || 0) + 1;
-    h.key = seen[h.no] > 1 ? `${h.no}-${seen[h.no]}` : String(h.no);
+function nearestGreen(f, p, within = 60) {
+  let best = null, bd = within;
+  for (const gr of f.greens) {
+    const d = Math.min(dist(p, gr.c), ...gr.pts.map((q) => dist(p, q)));
+    if (d < bd) { bd = d; best = gr; }
   }
+  return best;
+}
+
+/**
+ * Ordered hole model: { no, key, par, line, tee, green (polygon|null), center, lengthM, source }.
+ * Mapped holes from the dataset come first; holes the user mapped (or the app learned) fill the gaps.
+ */
+export function buildHoles(f, userHoles = {}) {
+  const holes = f.holes.filter((h) => h.pts.length >= 2).map((h) => {
+    const end = h.pts[h.pts.length - 1];
+    const green = nearestGreen(f, end, 90);
+    const lengthM = h.distTag && h.distTag > 50 ? h.distTag : null;
+    return { no: h.ref, par: h.par, hcp: h.hcp, name: h.name, line: h.pts, tee: h.pts[0], green, center: green ? green.c : end, lengthM: lengthM || lineLength(h.pts), source: 'osm' };
+  });
+  holes.sort((a, b) => (a.no ?? 99) - (b.no ?? 99));
+  const seen = {};
+  for (const h of holes) { if (h.no == null) continue; seen[h.no] = (seen[h.no] || 0) + 1; h.key = seen[h.no] > 1 ? `${h.no}-${seen[h.no]}` : String(h.no); }
   let i = 0;
   for (const h of holes) if (h.no == null) { h.no = 100 + (++i); h.key = `x${i}`; }
-  return holes;
+
+  // user / learned holes
+  const have = new Set(holes.map((h) => h.key));
+  const maxNo = Math.max(18, ...Object.keys(userHoles).map((k) => parseInt(k, 10)).filter(Number.isFinite));
+  const out = [...holes];
+  for (let n = 1; n <= maxNo; n++) {
+    const key = String(n);
+    const u = userHoles[key];
+    if (have.has(key)) {
+      // user may correct par or pin on a mapped hole
+      if (u?.par) { const h = out.find((x) => x.key === key); h.par = u.par; }
+      continue;
+    }
+    if (u?.tee || u?.green) {
+      const line = [u.tee, ...(u.mid ? [u.mid] : []), u.green].filter(Boolean);
+      const green = u.green ? nearestGreen(f, u.green, 40) : null;
+      out.push({ no: n, key, par: u.par || null, line: line.length >= 2 ? line : [], tee: u.tee || null, green, center: u.green || null, lengthM: line.length >= 2 ? lineLength(line) : 0, source: u.learned ? 'learned' : 'user' });
+    } else if (!holes.length || n <= 18) {
+      out.push({ no: n, key, par: u?.par || null, line: [], tee: null, green: null, center: null, lengthM: 0, source: 'none' });
+    }
+  }
+  // estimate par from length when the data has none (shown as 推定)
+  for (const h of out) if (!h.par && h.lengthM) { const y = h.lengthM / 0.9144; h.par = y < 250 ? 3 : y < 470 ? 4 : 5; h.parEst = true; }
+  return out.sort((a, b) => a.no - b.no || String(a.key).localeCompare(String(b.key)));
 }
 
 /** hazards that matter for a hole, with distance along the hole and side */
 export function hazardsForHole(hole, f) {
-  if (!hole?.line?.length) return [];
+  if (!hole?.line?.length || !f) return [];
   const list = [];
   const consider = (arr, type) => {
     for (const hz of arr) {
+      if (!hz.c) continue;
       const near = nearestOnLine(hz.c, hole.line);
-      const reach = Math.max(...hz.pts.map((p) => dist(hz.c, p)), 5);
+      const reach = Math.max(5, ...hz.pts.map((p) => dist(hz.c, p)));
       if (near.d - reach > 35) continue;
-      list.push({ type, hz, along: near.along, lateral: near.lateral, size: reach, nearGreen: dist(hz.c, hole.center) < 45 });
+      if (near.along < 20 && near.d > 40) continue;
+      list.push({ type, hz, along: near.along, lateral: near.lateral, size: reach, nearGreen: hole.center ? dist(hz.c, hole.center) < 45 : false });
     }
   };
   consider(f.bunkers, 'bunker');
   consider(f.water, 'water');
+  for (const h of hole.aiHazards || []) list.push(h);
   return list.sort((a, b) => a.along - b.along);
 }
 
-/** nearest hole to a position (for auto hole detection) */
+/** nearest playable hole to a position (for auto hole detection) */
 export function nearestHole(holes, p) {
   let best = null, bd = Infinity;
   for (const h of holes) {
-    const d = Math.min(nearestOnLine(p, h.line).d, dist(p, h.center) - 10);
+    if (!h.center) continue;
+    const d = Math.min(h.line.length >= 2 ? nearestOnLine(p, h.line).d : Infinity, dist(p, h.center) - 10, h.tee ? dist(p, h.tee) : Infinity);
     if (d < bd) { bd = d; best = h; }
   }
   return bd < 120 ? best : null;
+}
+
+/** greens closest to the player — used when a hole is not mapped yet */
+export function greensNear(f, p, n = 4) {
+  return (f?.greens || []).filter((g) => g.c).map((g) => ({ g, d: dist(p, g.c) })).sort((a, b) => a.d - b.d).slice(0, n);
 }
