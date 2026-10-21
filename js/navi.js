@@ -600,6 +600,12 @@ function renderQuickScore() {
   const played = state.current.holes.filter((h) => h.strokes);
   const tot = played.reduce((a, h) => a + h.strokes, 0), toPar = tot - played.reduce((a, h) => a + h.par, 0);
   $('#qsTotal').textContent = played.length ? `合計 ${tot}（${toPar === 0 ? 'E' : toPar > 0 ? '+' + toPar : toPar}）· ${played.length}H` : 'スコアはここでも入力できます';
+  // round finished: offer to save and open the memories
+  const fin = $('#qsFinish');
+  fin.hidden = !(played.length >= 18 && !state.current.saved);
+  if (!fin.hidden) fin.innerHTML = `<span>おつかれさまでした！ <b>${tot}</b></span><button class="btn small primary" id="qsSave">保存して思い出を残す</button>`;
+  const sv = $('#qsSave');
+  if (sv) sv.onclick = () => { window.dispatchEvent(new CustomEvent('goto-tab', { detail: 'score' })); setTimeout(() => $('#btnSaveRound')?.click(), 50); };
 }
 
 // ---------------- auto course detection ----------------

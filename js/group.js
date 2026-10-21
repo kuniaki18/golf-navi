@@ -101,6 +101,13 @@ function receive(code, p) {
       for (const [k, v] of Object.entries(holes)) if (!uh[k] || (v.updatedAt || 0) > (uh[k].updatedAt || 0)) { uh[k] = v; n++; }
       state.notes[courseId] ??= {};
       for (const [k, v] of Object.entries(notes)) if (!state.notes[courseId][k] || (v.updatedAt || 0) > (state.notes[courseId][k].updatedAt || 0)) { state.notes[courseId][k] = v; n++; }
+      // today's pin positions (only if they are for today)
+      const today = new Date().toISOString().slice(0, 10);
+      if (p.pins && p.pinDate === today) {
+        if (state.todayPins?.date !== today) state.todayPins = { date: today, c: {} };
+        const tp = (state.todayPins.c[courseId] ??= {});
+        for (const [k, v] of Object.entries(p.pins)) { tp[k] = v; n++; }
+      }
       sysMsg(r, p, `${p.from.name}さんが「${courseName}」の攻略情報を共有しました${p.from.id !== me().id ? `（${n}件更新）` : ''}`);
       if (n && p.from.id !== me().id) window.dispatchEvent(new CustomEvent('course-intel', { detail: { courseId } }));
       break;
@@ -292,10 +299,13 @@ export async function shareCourseIntel() {
   if (!c) { toast('コースを選んでください'); return; }
   if (!active) { toast('先に「仲間」タブでグループを作ってください'); return; }
   const holes = state.userHoles?.[c.id] || {}, notes = state.notes?.[c.id] || {};
-  if (!Object.keys(holes).length && !Object.keys(notes).length) { toast('共有できる登録ホールや攻略メモがまだありません'); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const pins = state.todayPins?.date === today ? state.todayPins.c?.[c.id] || {} : {};
+  if (!Object.keys(holes).length && !Object.keys(notes).length && !Object.keys(pins).length) { toast('共有できる登録ホール・攻略メモ・ピン位置がまだありません'); return; }
   try {
-    // keep each message under the relay limit by sending holes and notes separately when large
-    const parts = JSON.stringify({ holes, notes }).length > 2400 ? [{ holes }, { notes }] : [{ holes, notes }];
+    // keep each message under the relay limit by sending holes, notes and pins separately when large
+    const pinPart = Object.keys(pins).length ? { pins, pinDate: today } : {};
+    const parts = JSON.stringify({ holes, notes, pins }).length > 2400 ? [{ holes }, { notes }, pinPart].filter((x) => Object.keys(x).length) : [{ holes, notes, ...pinPart }];
     for (const part of parts) await send(active, { type: 'course-intel', courseId: c.id, courseName: c.name, ...part });
     toast(`「${room().name}」に共有しました`);
   } catch (e) { toast(e.message); }
