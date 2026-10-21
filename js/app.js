@@ -4,6 +4,7 @@ import { initNavi, onNaviShown, loadCourse, refreshNavi, fillShotClubs, applyIma
 import { openBook } from './coursebook.js';
 import { initSwing } from './swing.js';
 import { initMemory, openMemory } from './memory.js';
+import { maybeOnboard } from './onboard.js';
 import { initCourses } from './courses.js';
 import { initScore, syncCourse } from './score.js';
 import { initTracer } from './tracer.js';
@@ -159,6 +160,7 @@ function boot() {
   courseChip();
   initNavi();
   goto(new URLSearchParams(location.search).get('room') ? 'group' : state.ui.tab || 'navi');
+  maybeOnboard(() => { refreshNavi(); renderAnalysis(); fillShotClubs(); renderClubs(); $('#targetScore').value = state.settings.targetScore; toast('準備ができました。コースを選ぶか、コースに着くと自動で案内します', 4000); });
   initInstall();
   if (!state.clubs?.length) { state.clubs = DEFAULT_CLUBS.map((c) => ({ ...c })); save('clubs'); }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {

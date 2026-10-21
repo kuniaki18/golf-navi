@@ -2,7 +2,7 @@
 // hazard carries, hole strategy, shot tracking, hole mapping for unmapped courses, and auto-learning.
 import { $, $$, esc, toast, dist, bearing, m2y, y2m, md, uid, fmtDate } from './util.js';
 import { state, save, getCourseCache, putCourseCache, getNote, setNote } from './store.js';
-import { courseFeatures, buildHoles, nearestHole, matchCourse, greensNear } from './osm.js';
+import { courseFeatures, buildHoles, nearestHole, matchCourse, greensNear, setLabel } from './osm.js';
 import { playsLike, recommendClub, weather, headComponent, crossComponent, elevations, elevationSource, compass } from './advice.js';
 import { holeStrategy, hazardDistancesFrom } from './strategy.js';
 import { askClaude, COACH_SYSTEM, hasAI } from './ai.js';
@@ -74,6 +74,10 @@ export function initNavi() {
   });
   $('#btnReloadCourse').onclick = () => loadCourse(true);
   $('#btnCourseBook').onclick = () => window.dispatchEvent(new CustomEvent('open-book'));
+  $('#btnArcs').onclick = () => { state.ui.arcs = state.ui.arcs === 'clubs' ? 'dist' : 'clubs'; save('ui'); $('#btnArcs').classList.toggle('on', state.ui.arcs === 'clubs'); render(); };
+  $('#btnArcs').classList.toggle('on', state.ui.arcs === 'clubs');
+  $('#btnOffline').onclick = saveOffline;
+  initQuickScore();
   fillShotClubs();
   renderShotLog();
   startGPS();
@@ -135,12 +139,18 @@ function onFix(pos) {
   meAcc = Math.max(2, Math.min(...fixes.map((f) => f.acc)) / Math.sqrt(fixes.length));
   $('#gpsStatus').textContent = `GPS ±${fmt(m2y(meAcc))}${ul()}${fixes.length > 2 ? ' · 安定' : ''}`;
   if ($('#autoHole').checked && holes.length) autoHole();
+  detectCourse();
   render();
 }
 
 function autoHole() {
   const cur = holes[holeIdx], next = holes[holeIdx + 1];
   if (next?.tee && dist(me, next.tee) < 35 && (!cur.center || dist(me, cur.center) > 25)) return gotoHole(holeIdx + 1, true);
+  // walking onto another course of a 27/36-hole club: switch course when standing on its tee
+  const nearAll = nearestHole(allHoles, me);
+  if (nearAll && (nearAll.set || 0) !== activeSet() && nearAll.tee && dist(me, nearAll.tee) < 30) {
+    setSet(nearAll.set || 0); state.ui.holeKey = nearAll.key; rebuild(); toast(`${setLabel(activeSet())}に切り替えました`); return;
+  }
   const near = nearestHole(holes, me);
   if (near && near !== cur) {
     const dCur = Math.min(cur.center ? dist(me, cur.center) : Infinity, cur.tee ? dist(me, cur.tee) : Infinity);
@@ -226,15 +236,30 @@ export async function loadCourse(force) {
     }
   }
   rebuild(true);
-  try { wx = await weather(c.lat, c.lon); renderAdvice(); } catch {}
+  try { wx = await weather(c.lat, c.lon); render(); } catch {}
 }
 
+let allHoles = [];
+const activeSet = () => (cid() && state.ui.holeSet?.[cid()]) || 0;
 function rebuild(first) {
   const keep = curHole()?.key ?? state.ui.holeKey;
-  holes = buildHoles(features, userHoles());
+  allHoles = buildHoles(features, userHoles());
+  const sets = [...new Set(allHoles.map((h) => h.set || 0))].sort((a, b) => a - b);
+  if (!sets.includes(activeSet())) setSet(0, false);
+  holes = allHoles.filter((h) => (h.set || 0) === activeSet());
   holeIdx = Math.max(0, holes.findIndex((h) => h.key === keep));
+  const btn = $('#setBtn');
+  btn.hidden = sets.length < 2;
+  btn.textContent = setLabel(activeSet());
+  btn.onclick = () => { setSet((activeSet() + 1) % sets.length); state.ui.holeKey = null; rebuild(); toast(`${setLabel(activeSet())}に切り替えました`); };
   renderCourseLayer();
   gotoHole(holeIdx, first || true);
+}
+function setSet(i, persist = true) {
+  if (!cid()) return;
+  state.ui.holeSet ??= {}; state.ui.holeSet[cid()] = i;
+  if (state.current) state.current.set = i;
+  if (persist) save('ui');
 }
 
 function renderEmpty() {
@@ -269,6 +294,7 @@ export function gotoHole(i, fit) {
   $('#aiHoleOut').hidden = !ai;
   $('#aiHoleOut').innerHTML = ai ? md(ai.text) + `<p class="muted">AI作成: ${new Date(ai.updatedAt).toLocaleDateString('ja-JP')}</p>` : '';
   renderStrategy();
+  renderQuickScore();
   if (fit) { hv.resetView(); fitMap(); }
   render();
   window.dispatchEvent(new CustomEvent('navi-hole', { detail: { no: h.no, par: h.parEst ? null : h.par } }));
@@ -295,6 +321,7 @@ function render() {
   const area = !state.course ? null : me && dist(me, state.course) < 2500 ? me : draft?.tee || prevGreen || { lat: state.course.lat, lon: state.course.lon };
   hv?.set({
     hole: h, features, me, acc: meAcc, target, pin, unit: unit() === 'm' ? 'm' : 'yd', hazards: strat?.hazards || [], area, draft,
+    arcs: state.ui.arcs === 'clubs' ? state.clubs : null, wind: wx, shots: todaysShots(h),
     emptyText: !state.course ? 'コースを選ぶとホールが表示されます' : draft?.tee ? `${h.no}番のグリーンをタップ` : `${h?.no ?? ''}番は未登録：ティーをタップ（拡大・移動できます）`,
   });
   if (view === 'map') renderMapOverlay(c);
@@ -539,3 +566,110 @@ function summarizeTendency(rounds) {
 export function refreshNavi() { fillShotClubs(); renderShotLog(); renderStrategy(); render(); }
 export function currentCourseData() { return { features, holes }; }
 export function applyImagery() { setImagery(state.settings.imagery || 'gsi'); if (map && mapTiles) { map.removeLayer(mapTiles); mapTiles = null; map.remove(); map = null; } if (view === 'map') ensureMap(); hv?.render(); }
+
+// ---------------- quick score entry on the navi screen ----------------
+function scoreHole() {
+  const h = curHole(); const n = h?.no;
+  if (!state.current || !n || n > 18) return null;
+  return { n, sh: state.current.holes[n - 1], par: h.parEst ? null : h.par };
+}
+function initQuickScore() {
+  $('#quickScore').addEventListener('click', (e) => {
+    const x = scoreHole(); if (!x) return;
+    const b = e.target.closest('button'); if (!b) return;
+    const sh = x.sh;
+    if (x.par && !sh.strokes) sh.par = x.par;
+    if (b.dataset.q) {
+      const f = b.dataset.q, d = Number(b.dataset.d);
+      if (sh[f] == null) sh[f] = f === 'strokes' ? sh.par : 2; else sh[f] = Math.max(0, sh[f] + d);
+      if (f === 'putts' && sh.strokes != null && sh.putts > sh.strokes) sh.strokes = sh.putts;
+    } else if (b.dataset.v) sh.fw = sh.fw === b.dataset.v ? null : b.dataset.v;
+    if (state.course && !state.current.course) { state.current.course = state.course.name; state.current.courseId = state.course.id; }
+    save('round'); renderQuickScore(); window.dispatchEvent(new Event('round-changed'));
+  });
+  window.addEventListener('round-changed', renderQuickScore);
+}
+function renderQuickScore() {
+  const x = scoreHole(); const box = $('#quickScore');
+  box.hidden = !x || !state.course; if (box.hidden) return;
+  const sh = x.sh; const par = x.par || sh.par;
+  $('#qsHole').textContent = `${x.n}番`; $('#qsPar').textContent = `PAR ${par}`;
+  $('#qsStrokes').textContent = sh.strokes ?? '-'; $('#qsPutts').textContent = sh.putts ?? '-';
+  $$('#qsFw button').forEach((b) => b.classList.toggle('on', b.dataset.v === sh.fw));
+  $('#qsFw').hidden = par === 3;
+  const played = state.current.holes.filter((h) => h.strokes);
+  const tot = played.reduce((a, h) => a + h.strokes, 0), toPar = tot - played.reduce((a, h) => a + h.par, 0);
+  $('#qsTotal').textContent = played.length ? `合計 ${tot}（${toPar === 0 ? 'E' : toPar > 0 ? '+' + toPar : toPar}）· ${played.length}H` : 'スコアはここでも入力できます';
+}
+
+// ---------------- auto course detection ----------------
+let detected = null;
+async function detectCourse() {
+  if (!me || detected === 'done' || detected === 'busy') return;
+  if (state.course && dist(me, state.course) < 3000) { detected = 'done'; return; }
+  detected = 'busy';
+  try {
+    const { bundledCourses } = await import('./osm.js');
+    const all = await bundledCourses();
+    let best = null, bd = Infinity;
+    for (const c of all) {
+      const b = c.bounds;
+      const inside = b && me.lat >= b[0] - 0.002 && me.lat <= b[2] + 0.002 && me.lon >= b[1] - 0.002 && me.lon <= b[3] + 0.002;
+      const d = dist(me, c);
+      if ((inside || d < 900) && d < bd) { bd = d; best = c; }
+    }
+    if (!best) { detected = null; return; }
+    detected = 'done';
+    const bn = $('#detectBanner');
+    bn.hidden = false;
+    bn.innerHTML = `<span>いま <b>${esc(best.name)}</b> にいますか？</span><button class="btn small primary" id="dtYes">このコースでプレー</button><button class="btn small" id="dtNo">ちがう</button>`;
+    $('#dtNo').onclick = () => (bn.hidden = true);
+    $('#dtYes').onclick = () => {
+      bn.hidden = true;
+      state.course = { id: best.id, name: best.name, lat: best.lat, lon: best.lon, bounds: best.bounds, source: 'osm', pref: best.pref };
+      state.ui.holeKey = '1'; save('course');
+      window.dispatchEvent(new CustomEvent('course-picked'));
+    };
+  } catch { detected = null; }
+}
+
+// ---------------- today's shots on the hole view ----------------
+function todaysShots(h) {
+  if (!h || !cid()) return [];
+  const day = new Date().toISOString().slice(0, 10);
+  return (state.shots || []).filter((s) => s.courseId === cid() && s.hole === h.no && s.date?.slice(0, 10) === day && s.to);
+}
+
+// ---------------- offline pack: aerial tiles for every hole ----------------
+async function saveOffline() {
+  if (!state.course) { toast('コースを選んでください'); return; }
+  const st = $('#offlineStatus');
+  const esri = state.settings.imagery === 'esri';
+  const url = (z, x, y) => (esri ? `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}` : `https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${z}/${x}/${y}.jpg`);
+  const maxZ = esri ? 19 : 18;
+  const boxes = holes.filter((h) => h.center).map((h) => {
+    const pts = [...(h.line || []), h.center];
+    return [Math.min(...pts.map((p) => p.lat)) - 0.0012, Math.min(...pts.map((p) => p.lon)) - 0.0015, Math.max(...pts.map((p) => p.lat)) + 0.0012, Math.max(...pts.map((p) => p.lon)) + 0.0015];
+  });
+  if (!boxes.length && state.course.bounds) boxes.push(state.course.bounds);
+  if (!boxes.length) { toast('このコースは範囲が分からないため保存できません'); return; }
+  const tx = (lon, z) => Math.floor(((lon + 180) / 360) * 2 ** z);
+  const ty = (lat, z) => { const r = (lat * Math.PI) / 180; return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z); };
+  const set = new Set();
+  for (const b of boxes) for (let z = 15; z <= maxZ; z++) for (let x = tx(b[1], z); x <= tx(b[3], z); x++) for (let y = ty(b[2], z); y <= ty(b[0], z); y++) set.add(`${z}/${x}/${y}`);
+  const list = [...set].slice(0, 2500);
+  let done = 0, fail = 0;
+  st.textContent = `航空写真 ${list.length}枚を保存中…`;
+  const queue = list.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const [z, x, y] = queue.shift().split('/').map(Number);
+      try { const r = await fetch(url(z, x, y), { mode: 'cors' }); if (!r.ok) fail++; } catch { fail++; }
+      done++;
+      if (done % 20 === 0) st.textContent = `航空写真を保存中… ${Math.round((done / list.length) * 100)}%`;
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  try { await fetch(`data/c/${state.course.osmId || state.course.id}.json`); } catch {}
+  st.textContent = `保存しました（${done - fail}枚）。電波がなくても、このコースのホールビューが表示できます。`;
+}

@@ -1,0 +1,43 @@
+/* ---------- quick score on the navi screen ---------- */
+.quick-score { padding: 10px 12px; gap: 8px; }
+.qs-row { display: grid; grid-template-columns: auto 1fr 1fr; gap: 10px; align-items: center; }
+.qs-title { display: flex; flex-direction: column; line-height: 1.2; }
+.qs-title b { font: 700 1.3rem/1 var(--display); }
+.qs-step { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface-2); position: relative; }
+.qs-step span { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font-size: .6rem; color: var(--muted); pointer-events: none; }
+.qs-step button { height: 46px; border: 0; background: none; font-size: 1.3rem; color: var(--fg); }
+.qs-step b { text-align: center; font: 700 1.6rem/1 var(--display); padding-top: 8px; font-variant-numeric: tabular-nums; }
+.qs-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.qs-fw { min-width: 150px; }
+.qs-fw button { min-height: 32px; font-size: .78rem; }
+
+/* ---------- course detection banner ---------- */
+.detect-banner { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--flag); color: #1a1400; border-radius: var(--r); padding: 10px 12px; }
+.detect-banner span { flex: 1; min-width: 180px; }
+.detect-banner .btn { background: rgba(255,255,255,.7); color: #1a1400; border-color: transparent; }
+.detect-banner .btn.primary { background: var(--bar); color: #fff; }
+.offline-status { flex-basis: 100%; }
+.map-btn.on { background: var(--flag); color: #1a1400; }
+
+/* ---------- onboarding ---------- */
+.onboard { position: fixed; inset: 0; z-index: 1400; background: var(--bar); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); overflow-y: auto; }
+.ob-card { width: 100%; max-width: 440px; background: var(--surface); color: var(--fg); border-radius: 20px; padding: 22px 18px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.ob-step { display: flex; flex-direction: column; gap: 12px; }
+.ob-step h2 { font-size: 1.4rem; }
+.ob-step p { margin: 0; }
+.ob-brand { font: 700 2rem/1 var(--display); letter-spacing: .04em; color: var(--green); display: flex; align-items: baseline; gap: 6px; }
+.ob-brand small { font-size: .8rem; letter-spacing: .25em; color: var(--flag); }
+.ob-drive { display: flex; align-items: baseline; gap: 6px; justify-content: center; }
+.ob-drive b { font: 700 4rem/1 var(--display); color: var(--green); font-variant-numeric: tabular-nums; }
+.ob-clubs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ob-clubs span { display: flex; flex-direction: column; align-items: center; background: var(--surface-2); border-radius: 8px; padding: 4px; font: 600 1rem/1.2 var(--display); }
+.ob-clubs b { font-size: .7rem; color: var(--muted); font-family: var(--body); }
+.ob-nav { display: flex; align-items: center; gap: 10px; }
+.ob-nav .btn.primary { margin-left: auto; min-width: 120px; }
+.ob-dots { display: flex; gap: 6px; }
+.ob-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.ob-dots i.on { background: var(--green); width: 20px; border-radius: 4px; }
+.my-hist { background: var(--green); color: var(--green-ink); border-radius: 6px; padding: 1px 6px; font-size: .75rem; }
+.hole-side { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.set-btn { border: 1px solid var(--green); background: var(--green); color: var(--green-ink); border-radius: 8px; font-size: .72rem; font-weight: 700; padding: 3px 8px; }
+.book-table .set-row td { background: var(--green); color: var(--green-ink); font-weight: 700; text-align: left; padding-left: 10px; }

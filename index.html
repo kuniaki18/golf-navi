@@ -21,6 +21,7 @@
 <link rel="stylesheet" href="css/features.css">
 <link rel="stylesheet" href="css/v2.css">
 <link rel="stylesheet" href="css/v3.css">
+<link rel="stylesheet" href="css/v4.css">
 </head>
 <body>
 <header class="topbar">
@@ -41,7 +42,7 @@
       <div class="hole-meta" id="holeMeta">PAR - · - y</div>
     </div>
     <button class="step" id="holeNext" aria-label="次のホール">›</button>
-    <label class="auto-toggle"><input type="checkbox" id="autoHole" checked> 自動</label>
+    <div class="hole-side"><button class="set-btn" id="setBtn" hidden>コースA</button><label class="auto-toggle"><input type="checkbox" id="autoHole" checked> 自動</label></div>
   </div>
 
   <div class="view-wrap">
@@ -52,6 +53,7 @@
     </div>
     <div class="map-tools">
       <button class="map-btn" id="btnLocate" title="現在地へ・表示をリセット" aria-label="現在地へ">◎</button>
+      <button class="map-btn" id="btnArcs" title="距離の弧を番手で表示">番手</button>
       <button class="map-btn" id="btnPinClear" title="今日のピン位置を消す" hidden>ピン消</button>
     </div>
     <div class="gps-status" id="gpsStatus">GPS 取得待ち</div>
@@ -65,6 +67,17 @@
     <div class="yd-pin" id="ydPin" hidden><span class="yd-label">今日のピン</span><b id="ydPinNum">---</b></div>
   </div>
   <div class="target-line" id="targetLine" hidden></div>
+
+  <div class="detect-banner" id="detectBanner" hidden></div>
+
+  <div class="card quick-score" id="quickScore">
+    <div class="qs-row">
+      <div class="qs-title"><b id="qsHole">1番</b><span class="muted" id="qsPar">PAR 4</span></div>
+      <div class="qs-step"><span>打数</span><button data-q="strokes" data-d="-1" aria-label="打数を減らす">−</button><b id="qsStrokes">-</b><button data-q="strokes" data-d="1" aria-label="打数を増やす">＋</button></div>
+      <div class="qs-step"><span>パット</span><button data-q="putts" data-d="-1" aria-label="パットを減らす">−</button><b id="qsPutts">-</b><button data-q="putts" data-d="1" aria-label="パットを増やす">＋</button></div>
+    </div>
+    <div class="qs-foot"><span class="muted" id="qsTotal">合計 -</span><div class="seg qs-fw" id="qsFw"><button data-v="left">左</button><button data-v="hit">FW</button><button data-v="right">右</button></div></div>
+  </div>
 
   <div class="card map-card" id="mapCard" hidden>
     <div class="card-head"><h2>このホールは未登録です</h2><button class="btn small primary" id="btnMapHole">ホールを登録</button></div>
@@ -131,6 +144,8 @@
   <div class="card tools-card">
     <button class="btn" id="btnCourseBook">攻略ブック（全ホール）</button>
     <button class="btn" id="btnShareIntel">攻略を仲間に共有</button>
+    <button class="btn" id="btnOffline">オフライン用に保存</button>
+    <div class="muted offline-status" id="offlineStatus"></div>
     <button class="btn" id="btnReloadCourse">コースデータ再取得</button>
   </div>
 </section>
@@ -565,6 +580,33 @@
   <button class="btn small" id="btnInstallClose">閉じる</button>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div class="onboard" id="onboard" hidden>
+  <div class="ob-card">
+    <div class="ob-step" data-s="1">
+      <div class="ob-brand">KUNIKUNI<small>GOLF</small></div>
+      <h2>ようこそ</h2>
+      <p class="muted">3つ答えるだけで、あなた専用のキャディになります。</p>
+      <label>名前（仲間に表示）<input id="obName" placeholder="例: くにくに" autocomplete="nickname"></label>
+      <label>利き手<div class="seg" id="obHand"><button data-v="right" class="on">右打ち</button><button data-v="left">左打ち</button></div></label>
+      <label>ウェア提案<div class="seg" id="obGender"><button data-v="men" class="on">メンズ</button><button data-v="women">レディース</button></div></label>
+    </div>
+    <div class="ob-step" data-s="2" hidden>
+      <h2>ドライバーの飛距離</h2>
+      <p class="muted">キャリー（転がりを除いた距離）の目安を選ぶと、全部の番手の距離を自動で設定します。あとで設定やショット記録の実測で直せます。</p>
+      <div class="ob-drive"><b id="obDriveVal">220</b><span>ヤード</span></div>
+      <input type="range" id="obDrive" min="140" max="300" step="5" value="220" aria-label="ドライバーのキャリー">
+      <div class="ob-clubs" id="obClubs"></div>
+    </div>
+    <div class="ob-step" data-s="3" hidden>
+      <h2>目標スコア</h2>
+      <div class="seg" id="obTarget"><button data-v="120">120</button><button data-v="100">100</button><button data-v="90" class="on">90</button><button data-v="80">80</button><button data-v="72">72</button></div>
+      <p class="muted">課題分析とAIコーチの目安になります。</p>
+      <button class="btn" id="obLocate">位置情報をオンにする（距離計測に必要）</button>
+      <p class="muted" id="obLocStatus"></p>
+    </div>
+    <div class="ob-nav"><button class="btn" id="obBack" hidden>戻る</button><span class="ob-dots" id="obDots"></span><button class="btn primary" id="obNext">次へ</button></div>
+  </div>
+</div>
 <div class="photo-viewer" id="photoViewer" hidden><img id="photoViewerImg" alt=""><button class="btn small" id="memClose">閉じる</button></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>

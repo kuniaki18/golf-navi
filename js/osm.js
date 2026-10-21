@@ -185,8 +185,8 @@ export function buildHoles(f, userHoles = {}) {
     return { no: h.ref, par: h.par, hcp: h.hcp, name: h.name, line: h.pts, tee: h.pts[0], green, center: green ? green.c : end, lengthM: lengthM || lineLength(h.pts), source: 'osm' };
   });
   holes.sort((a, b) => (a.no ?? 99) - (b.no ?? 99));
-  const seen = {};
-  for (const h of holes) { if (h.no == null) continue; seen[h.no] = (seen[h.no] || 0) + 1; h.key = seen[h.no] > 1 ? `${h.no}-${seen[h.no]}` : String(h.no); }
+  assignSets(holes);
+  for (const h of holes) if (h.no != null) h.key = h.set ? `${h.no}-${h.set + 1}` : String(h.no);
   let i = 0;
   for (const h of holes) if (h.no == null) { h.no = 100 + (++i); h.key = `x${i}`; }
 
@@ -214,6 +214,51 @@ export function buildHoles(f, userHoles = {}) {
   for (const h of out) if (!h.par && h.lengthM) { const y = h.lengthM / 0.9144; h.par = y < 250 ? 3 : y < 470 ? 4 : 5; h.parEst = true; }
   return out.sort((a, b) => a.no - b.no || String(a.key).localeCompare(String(b.key)));
 }
+
+/**
+ * 27/36-hole clubs map several holes with the same number. Split them into separate courses by following
+ * the routing: the next hole's tee is the one closest to the previous hole's green.
+ */
+function assignSets(holes) {
+  const byNo = new Map();
+  for (const h of holes) if (h.no != null) (byNo.get(h.no) || byNo.set(h.no, []).get(h.no)).push(h);
+  const multi = Math.max(0, ...[...byNo.values()].map((a) => a.length));
+  for (const h of holes) h.set = 0;
+  if (multi < 2) return;
+  const nos = [...byNo.keys()].sort((a, b) => a - b);
+  const chains = [];
+  for (const n of nos) {
+    const pool = byNo.get(n).slice();
+    // greedy matching: shortest green→tee walk first
+    const pairs = [];
+    for (const ch of chains) for (const h of pool) { const last = ch[ch.length - 1]; if (last.no === n - 1 || last.no === n - 2) pairs.push({ ch, h, d: dist(last.center, h.tee) }); }
+    pairs.sort((a, b) => a.d - b.d);
+    const used = new Set(), extended = new Set();
+    for (const p of pairs) { if (used.has(p.h) || extended.has(p.ch) || p.d > 900) continue; p.ch.push(p.h); used.add(p.h); extended.add(p.ch); }
+    for (const h of pool) if (!used.has(h)) chains.push([h]);
+  }
+  // join broken pieces: a chain that starts right after another ends (by number) and close by
+  for (let merged = true; merged;) {
+    merged = false;
+    for (const a of chains) {
+      const end = a[a.length - 1];
+      let best = null, bd = 1200;
+      for (const b of chains) {
+        if (b === a || !b.length) continue;
+        const nums = new Set(a.map((h) => h.no));
+        if (b[0].no <= end.no || b.some((h) => nums.has(h.no))) continue;
+        const d = dist(end.center, b[0].tee);
+        if (d < bd) { bd = d; best = b; }
+      }
+      if (best) { a.push(...best.splice(0)); merged = true; }
+    }
+    for (let i = chains.length - 1; i >= 0; i--) if (!chains[i].length) chains.splice(i, 1);
+  }
+  // biggest chains first (main courses), then number them A, B, C…
+  chains.sort((a, b) => b.length - a.length || (a[0].no ?? 0) - (b[0].no ?? 0));
+  chains.forEach((ch, i) => ch.forEach((h) => (h.set = i)));
+}
+export const setLabel = (i) => `コース${'ABCDEFGH'[i] || i + 1}`;
 
 /** hazards that matter for a hole, with distance along the hole and side */
 export function hazardsForHole(hole, f) {

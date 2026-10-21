@@ -147,7 +147,24 @@ export class HoleView {
       const ang = Math.atan2(g.y - o.y, g.x - o.x);
       const pxPerM = Math.hypot(g.x - o.x, g.y - o.y) / Math.max(toG, 1);
       ctx.font = '600 12px "Barlow Condensed", system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      for (let u = stepU * 2; ; u += stepU) {
+      if (d.arcs?.length && this.interactive) {
+        // club arcs: where each club in the bag lands from here
+        const clubs = d.arcs.filter((c) => c.carry > 0).map((c) => ({ ...c, m: y2m(c.carry) })).filter((c) => c.m < toG + 25).sort((a, b) => b.m - a.m).slice(0, 5);
+        // labels alternate sides so neighbouring clubs don't overlap
+        let lastL = -1e9, lastR = -1e9;
+        clubs.forEach((c, i) => {
+          const r = c.m * pxPerM;
+          ctx.strokeStyle = i === 0 ? '#ffd60a' : 'rgba(255,214,10,.6)'; ctx.lineWidth = i === 0 ? 2.2 : 1.4;
+          ctx.beginPath(); ctx.arc(o.x, o.y, r, ang - 0.3, ang + 0.3); ctx.stroke();
+          const left = Math.abs(r - lastL) >= 20 || Math.abs(r - lastR) < 20;
+          if (Math.abs(r - (left ? lastL : lastR)) < 20) return; // both sides crowded: arc only
+          const side = left ? -0.34 : 0.34;
+          if (left) lastL = r; else lastR = r;
+          const lx = o.x + Math.cos(ang + side) * r, ly = o.y + Math.sin(ang + side) * r;
+          tag(ctx, lx, ly, `${c.name} ${Math.round(unit === 'm' ? c.m : c.carry)}`, 'rgba(26,20,0,.75)', '#ffd60a');
+        });
+      }
+      for (let u = stepU * 2; !(d.arcs?.length && this.interactive); u += stepU) {
         const m = unit === 'm' ? u : y2m(u);
         if (m > toG - 15) break;
         const r = m * pxPerM;
@@ -168,6 +185,34 @@ export class HoleView {
         const q = S(hz.hz.c);
         tag(ctx, q.x, q.y, `${fmt(front)}/${fmt(back)}`, hz.type === 'water' ? 'rgba(20,90,190,.85)' : 'rgba(120,95,40,.85)', '#fff');
       }
+    }
+
+    // today's recorded shots on this hole
+    if (this.mode === 'hole' && d.shots?.length) {
+      ctx.save();
+      for (const sh of d.shots) {
+        const a = S(sh.from), b = S(sh.to);
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2; ctx.setLineDash([2, 4]);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo((a.x + b.x) / 2 + (b.y - a.y) * 0.08, (a.y + b.y) / 2 - Math.abs(b.x - a.x) * 0.08, b.x, b.y); ctx.stroke();
+        ctx.setLineDash([]); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, 7); ctx.fill();
+        if (this.interactive) { ctx.font = '600 11px "Barlow Condensed", system-ui'; tag(ctx, b.x + 22, b.y, `${sh.club} ${unit === 'm' ? Math.round(sh.yards * 0.9144) : sh.yards}`, 'rgba(0,0,0,.6)', '#fff'); }
+      }
+      ctx.restore();
+    }
+
+    // wind arrow (relative to the rotated view)
+    if (d.wind && Number.isFinite(d.wind.speed) && this.interactive && this.mode === 'hole') {
+      const toward = ((d.wind.dir + 180) * Math.PI) / 180 + f.a; // meteorological "from" → blowing toward
+      const cx = 30, cy = 70;
+      ctx.save(); ctx.translate(cx, cy);
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.beginPath(); ctx.arc(0, 0, 20, 0, 7); ctx.fill();
+      ctx.rotate(toward);
+      ctx.strokeStyle = '#7fdcff'; ctx.fillStyle = '#7fdcff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, -8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(6, -5); ctx.lineTo(-6, -5); ctx.fill();
+      ctx.restore();
+      ctx.font = '700 12px "Barlow Condensed", system-ui';
+      tag(ctx, cx, cy + 30, `${d.wind.speed.toFixed(1)}m`, 'rgba(0,0,0,.6)', '#7fdcff');
     }
 
     // target
