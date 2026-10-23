@@ -4,6 +4,9 @@
 import { askClaude, hasAI } from './ai.js';
 
 const TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+// Subresource Integrity: the browser refuses the script if the CDN copy was altered.
+// (Its worker / WASM files are fetched by the library itself and cannot carry SRI.)
+const TESS_SRI = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
 
 async function toJpeg(file, max = 1800, mono = false) {
   const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(file));
@@ -70,7 +73,7 @@ async function readWithClaude(file, pars, onStatus) {
 let tessLoading = null;
 function loadTesseract() {
   if (window.Tesseract) return Promise.resolve(window.Tesseract);
-  if (!tessLoading) tessLoading = new Promise((res, rej) => { const s = document.createElement('script'); s.src = TESS; s.onload = () => res(window.Tesseract); s.onerror = () => rej(new Error('OCRエンジンを読み込めませんでした')); document.head.appendChild(s); });
+  if (!tessLoading) tessLoading = new Promise((res, rej) => { const s = document.createElement('script'); s.src = TESS; s.integrity = TESS_SRI; s.crossOrigin = 'anonymous'; s.onload = () => res(window.Tesseract); s.onerror = () => rej(new Error('OCRエンジンを読み込めませんでした')); document.head.appendChild(s); });
   return tessLoading;
 }
 

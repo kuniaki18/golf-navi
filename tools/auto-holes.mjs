@@ -8,6 +8,14 @@ const only = process.argv[3];
 const R = 6371008.8, rad = Math.PI / 180;
 const pts = (f) => { const o = []; for (let i = 0; i + 1 < f.length; i += 2) o.push({ lat: f[i], lon: f[i + 1] }); return o; };
 const dist = (a, b) => { const dLa = (b.lat - a.lat) * rad, dLo = (b.lon - a.lon) * rad; const s = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(s)); };
+// area-weighted centroid without the ring's repeated closing point (a plain vertex mean is biased toward it)
+function polyCen(p0) {
+  const p = p0.length > 3 && p0[0].lat === p0[p0.length - 1].lat && p0[0].lon === p0[p0.length - 1].lon ? p0.slice(0, -1) : p0;
+  if (p.length < 3) return cen(p);
+  const o = p[0]; let A = 0, cx = 0, cy = 0;
+  for (let i = 0; i < p.length; i++) { const a = xy(o, p[i]), b = xy(o, p[(i + 1) % p.length]); const cr = a.x * b.y - b.x * a.y; A += cr; cx += (a.x + b.x) * cr; cy += (a.y + b.y) * cr; }
+  return Math.abs(A) < 1e-6 ? cen(p) : unxy(o, { x: cx / (3 * A), y: cy / (3 * A) });
+}
 const cen = (p) => ({ lat: p.reduce((a, x) => a + x.lat, 0) / p.length, lon: p.reduce((a, x) => a + x.lon, 0) / p.length });
 const xy = (o, p) => ({ x: (p.lon - o.lon) * rad * R * Math.cos(o.lat * rad), y: (p.lat - o.lat) * rad * R });
 const unxy = (o, v) => ({ lat: o.lat + v.y / (rad * R), lon: o.lon + v.x / (rad * R * Math.cos(o.lat * rad)) });
@@ -24,7 +32,7 @@ function axis(poly) {
 }
 
 export function estimate(d) {
-  const greens = (d.greens || []).map((g) => pts(g[0])).filter((p) => p.length > 2).map((p) => ({ p, c: cen(p), area: p.length }));
+  const greens = (d.greens || []).map((g) => pts(g[0])).filter((p) => p.length > 2).map((p) => ({ p, c: polyCen(p), area: p.length }));
   if (greens.length < 6) return [];
   // practice greens are usually tiny-count outliers near the clubhouse; keep all, merge pairs within 55m (2-green system)
   const comps = [];
@@ -57,13 +65,16 @@ export function estimate(d) {
     if (mapped) tee = mapped.c;
     const len = dist(tee, pr.cp.c);
     if (len < 180 || len > 640) continue;
-    holes.push({ tee, mid: pr.f.o, green: pr.cp.c, comp: pr.cp, len });
+    // 2-green complex: the playing target is one real green (the one on the fairway's line), never the midpoint
+    const lineDist = (g) => { const v = xy(far, g.c), w = xy(far, pr.cp.c); const L2 = Math.hypot(w.x, w.y) || 1; return Math.abs(v.x * w.y - v.y * w.x) / L2; };
+    const primary = pr.cp.members.slice().sort((g1, g2) => lineDist(g1) - lineDist(g2))[0];
+    holes.push({ tee, mid: pr.f.o, green: primary.c, comp: pr.cp, len: dist(tee, primary.c) });
   }
   // par 3s: green complexes without a fairway; tee from a mapped tee 100–230m away, else left without a tee
   for (const cp of comps) {
     if (usedComp.has(cp) || cp.members.length === 0) continue;
     const t = tees.map((x) => ({ x, d: dist(x.c, cp.c) })).filter((z) => z.d > 90 && z.d < 240).sort((a, b) => a.d - b.d)[0];
-    holes.push({ tee: t ? t.x.c : null, mid: null, green: cp.c, comp: cp, len: t ? t.d : 0, par3: true });
+    holes.push({ tee: t ? t.x.c : null, mid: null, green: cp.members[0].c, comp: cp, len: t ? dist(t.x.c, cp.members[0].c) : 0, par3: true });
   }
   if (holes.length < 6) return [];
   // routing: the next hole's tee is close to the previous hole's green. Greedy chain from the hole whose
@@ -83,6 +94,8 @@ export function estimate(d) {
   });
 }
 
+if (process.argv[1] && process.argv[1].endsWith('auto-holes.mjs')) main();
+function main() {
 const idx = JSON.parse(fs.readFileSync(`${DIR}/courses-jp.json`, 'utf8'));
 let n = 0, holesN = 0;
 for (const c of idx.courses) {
@@ -96,3 +109,4 @@ for (const c of idx.courses) {
 }
 fs.writeFileSync(`${DIR}/courses-jp.json`, JSON.stringify(idx));
 console.log(`courses with estimated holes: ${n}, holes: ${holesN}`);
+}

@@ -8,13 +8,15 @@ import { holeStrategy, hazardDistancesFrom } from './strategy.js';
 import { askClaude, COACH_SYSTEM, hasAI } from './ai.js';
 import { HoleView, IMAGERY, setImagery } from './holeview.js';
 import { analyzeGreen, readPutt, greenCondition } from './greenslope.js';
+import { GpsFilter } from './gpsfilter.js';
+import { greenDistances as greenDist, greenKey } from './geo.js';
 import { submitHole, communityHoles } from './community.js';
 
 let map, layers, meMarker, accCircle, overlay, mapTiles;
 let hv = null;
 let features = null, holes = [], holeIdx = 0;
 let me = null, meAcc = null, manualMe = false;
-const fixes = [];
+const gps = new GpsFilter();
 let view = 'hole'; // hole | green | map
 let mapClick = 'target'; // target | me | tee | mid | green
 let target = null;
@@ -55,7 +57,7 @@ export function initNavi() {
   $('#viewTabs').onclick = (e) => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); };
   $('#holePrev').onclick = () => gotoHole(holeIdx - 1, true);
   $('#holeNext').onclick = () => gotoHole(holeIdx + 1, true);
-  $('#btnLocate').onclick = () => { manualMe = false; fixes.length = 0; startGPS(); hv.resetView(); if (me && map) map.setView([me.lat, me.lon], 17); };
+  $('#btnLocate').onclick = () => { manualMe = false; gps.reset(); startGPS(); hv.resetView(); if (me && map) map.setView([me.lat, me.lon], 17); };
   $('#btnPinClear').onclick = () => { const h = curHole(); if (h) { delete todayPins()[h.key]; save('pin'); render(); } };
   ['lie', 'windMode', 'elevManual'].forEach((id) => $('#' + id).addEventListener('input', renderAdvice));
   $('#btnShot').onclick = recordShot;
@@ -81,9 +83,15 @@ export function initNavi() {
   $('#btnArcs').classList.toggle('on', state.ui.arcs === 'clubs');
   $('#btnOffline').onclick = saveOffline;
   $('#btnPrecise').onclick = startPrecise;
-  $('#btnGreenRead').onclick = () => { const h = curHole(); if (h) { try { const c = JSON.parse(localStorage.getItem('golfnavi:greens:v1') || '{}'); delete c[`${cid()}:${h.key}`]; localStorage.setItem('golfnavi:greens:v1', JSON.stringify(c)); } catch {} } readGreen(false); };
+  $('#btnGreenRead').onclick = () => { const h = curHole(); if (h) { try { const c = JSON.parse(localStorage.getItem('golfnavi:greens:v2') || '{}'); delete c[`v2:${greenKey(h.green, holeCenter(h))}`]; localStorage.setItem('golfnavi:greens:v2', JSON.stringify(c)); } catch {} } readGreen(false); };
   startCompass();
   initQuickScore();
+  $('#btnGreenAlt').onclick = () => {
+    const h = curHole(); if (!h?.greenOptions) return;
+    const next = ((h.greenIdx ?? 0) + 1) % h.greenOptions.length;
+    state.ui.greenAlt ??= {}; (state.ui.greenAlt[cid()] ??= {})[h.key] = next; save('ui');
+    rebuild(); toast(`${greenSideLabel(curHole(), next)}にしました`);
+  };
   $('#btnRenumber').onclick = openRenumber;
   $('#rnClose').onclick = () => ($('#renumberPanel').hidden = true);
   $('#rnSave').onclick = applyRenumber;
@@ -110,36 +118,38 @@ function ensureMap() {
 
 // ---------------- GPS quality, precise lock, compass ----------------
 let gpsHeading = null, compassHeading = null;
+const MODE_TXT = { wait: '測位待ち', settling: '測位中', stable: '静止・安定', moving: '移動中', poor: '精度が低い', measuring: '精密計測中', lock: '精密ロック' };
 function gpsBadge() {
   const el = $('#gpsStatus');
-  const accY = m2y(meAcc || 99);
-  const q = precise?.lockUntil ? 'lock' : accY <= 6 ? 'good' : accY <= 13 ? 'fair' : 'poor';
+  if (manualMe) { el.className = 'gps-status q-lock'; el.textContent = '手動の現在地'; return; }
+  const st = gps.state, now = Date.now();
+  if (!st.pos) { el.className = 'gps-status q-wait'; el.textContent = watchId == null ? (gpsError || 'GPS停止中') : '測位待ち…'; return; }
+  if (st.mode === 'measuring') { el.className = 'gps-status q-lock'; el.textContent = `精密計測中… あと${st.left ?? ''}秒（動かないで）`; return; }
+  const age = gps.age(now);
+  const accY = m2y(st.sigma);
+  const q = age > 30 ? 'stale' : age > 10 ? 'old' : st.mode === 'lock' ? 'lock' : st.mode === 'moving' ? 'fair' : accY <= 8 ? 'good' : accY <= 16 ? 'fair' : 'poor';
   el.className = 'gps-status q-' + q;
-  el.textContent = `${q === 'lock' ? '精密ロック' : 'GPS'} ±${fmt(accY)}${ul()}${q === 'poor' ? ' · 精度が低い（空の見える所で）' : fixes.length > 2 ? ' · 安定' : ''}`;
+  document.querySelector('.yardage')?.classList.toggle('stale', q === 'old' || q === 'stale');
+  const ageTxt = age < 3 ? '' : ` · ${Math.round(age)}秒前${age > 10 ? '（更新待ち）' : ''}`;
+  el.textContent = `${MODE_TXT[st.mode] || 'GPS'} 誤差の目安 ±${fmt(accY)}${ul()}${ageTxt}${q === 'poor' ? ' · 空の見える所で' : ''}`;
 }
 function startPrecise() {
-  if (!me) { toast('GPSを取得中です'); return; }
-  precise = { until: Date.now() + 6000, fixes: [] };
+  if (!gps.state.pos) { toast('GPSを取得中です'); return; }
+  gps.startMeasure(Date.now());
   $('#btnPrecise').classList.add('on');
   toast('6秒間その場で動かずに待ってください');
-  setTimeout(() => { if (precise?.until) finishPrecise(); }, 6500);
+  gpsBadge();
+  setTimeout(() => { if (gps.measure) { applyGps(gps.finishMeasure(Date.now())); afterPrecise(); render(); } }, 6800);
 }
-function finishPrecise() {
-  const fs = [...(precise?.fixes || []), ...fixes.slice(-3)];
+function afterPrecise() {
   $('#btnPrecise').classList.remove('on');
-  if (fs.length < 2) { precise = null; toast('GPSの更新が少なく精密計測できませんでした'); return; }
-  // drop outliers (>1.5× median distance from the mean), then accuracy-weighted mean
-  const mean = (arr) => { let w = 0, la = 0, lo = 0; for (const f of arr) { const k = 1 / Math.max(2, f.acc) ** 2; w += k; la += f.lat * k; lo += f.lon * k; } return { lat: la / w, lon: lo / w }; };
-  let m = mean(fs);
-  const ds = fs.map((f) => dist(f, m)).sort((a, b) => a - b);
-  const med = ds[Math.floor(ds.length / 2)];
-  const kept = fs.filter((f) => dist(f, m) <= Math.max(2, med * 1.5));
-  m = mean(kept.length >= 2 ? kept : fs);
-  me = m;
-  meAcc = Math.max(1.5, Math.min(...kept.map((f) => f.acc)) / Math.sqrt(kept.length));
-  precise = { lockUntil: Date.now() + 90000, pos: m };
-  gpsBadge(); render();
-  toast(`精密計測 ±${fmt(m2y(meAcc))}${ul()}（${kept.length}回の平均）`);
+  const st = gps.state;
+  toast(st.measureFailed ? 'GPSの更新が少なく精密計測できませんでした（そのまま使えます）' : `精密計測 誤差の目安 ±${fmt(m2y(st.sigma))}${ul()}（${st.n}回の平均）`);
+}
+function applyGps(st) {
+  if (manualMe || !st.pos) { gpsBadge(); return; }
+  me = st.pos; meAcc = st.sigma;
+  gpsBadge();
 }
 function startCompass() {
   const on = (e) => {
@@ -163,19 +173,21 @@ async function readGreen(auto) {
   if (greenBusy) return; greenBusy = true;
   $('#greenRead').innerHTML = '<p class="muted">国土地理院の高さデータからグリーンの傾斜を計算しています…</p>';
   try {
-    const key = `${cid()}:${h.key}`;
+    const key = `v2:${greenKey(h.green, h.center || c)}`;
     const [slope, cond] = await Promise.all([analyzeGreen(h.green, h.center || c, key), state.course ? greenCondition(state.course.lat, state.course.lon) : null]);
     curSlope = slope;
     const from = me && dist(me, c) < 400 ? me : (h.line?.length >= 2 ? h.line[h.line.length - 2] : h.tee) || me;
     const pin = (cid() && todayPins()[h.key]) || c;
-    const rd = slope && from ? readPutt(slope, from, pin, state.ui.swHand || 'right') : null;
-    const dirTxt = slope ? `${compass(slope.downBearing)}方向へ下る傾斜` : '';
-    $('#greenRead').innerHTML = slope ? `
-      <div class="gr-main"><b>${slope.pct < 0.6 ? 'ほぼ平ら' : `${slope.pct.toFixed(1)}%`}</b><span>${esc(dirTxt)} · 高低差 ${(slope.range * 100).toFixed(0)}cm</span></div>
-      ${rd ? `<ul class="tips"><li>${me && dist(me, c) < 400 ? 'いまの位置から' : 'フェアウェイ側から'}ピンへ：<b>${esc(rd.upDown)}</b>・<b>${esc(rd.sideTxt)}</b></li><li>${esc(rd.aim)}。${rd.along > 0.8 ? '下りはタッチを弱めに。' : rd.along < -0.8 ? '上りはしっかり届かせる。' : ''}</li><li>アプローチは${slope.pct >= 1 ? 'グリーンの低い側（矢印の先）に止めて、上りのパットを残すと安全。' : '奥に外さなければOK。'}</li></ul>` : ''}
-      ${cond ? `<p class="gr-cond"><span class="pill">速さ：${esc(cond.speed)}</span> ${esc(cond.note)}</p>` : ''}
-      <p class="muted">データ: ${esc(slope.src)}（${slope.n}点）。芝目や細かいアンジュレーションまでは分かりません。目安として使ってください。</p>`
-      : '<p class="muted">この場所の高さデータが取得できませんでした。</p>';
+    const rd = slope && from ? readPutt(slope, from, pin, state.ui.swHand || 'right') : null; // null when not determinable
+    const conf = slope?.conf;
+    const confCls = { high: 'good', mid: 'fair', low: 'poor', none: 'none' }[conf?.level] || 'none';
+    const where = me && dist(me, c) < 400 ? 'いまの位置から' : 'フェアウェイ側から（推定）';
+    $('#greenRead').innerHTML = !slope ? '<p class="muted">この場所の高さデータが取得できませんでした。</p>' : `
+      <div class="gr-main">${conf.level === 'none' ? '<b>判定不可</b>' : `<b>${slope.pct.toFixed(1)}%</b><span>±${slope.pctSE.toFixed(1)}% · ${esc(compass(slope.downBearing))}方向へ下る（方向の誤差 ±${Math.round(slope.dirSE)}°）</span>`}</div>
+      <p class="gr-conf"><span class="pill conf-${confCls}">信頼度：${esc(conf.label)}</span> ${esc(conf.reason)}</p>
+      ${rd ? `<ul class="tips"><li>${where}ピンへ：<b>${esc(rd.upDown)}</b>・<b>${esc(rd.sideTxt)}</b></li><li>${esc(rd.aim)}。</li></ul>` : ''}
+      ${cond ? `<p class="gr-cond"><span class="pill">速さ（天気からの推測）：${esc(cond.speed)}</span> ${esc(cond.note)}</p>` : ''}
+      <p class="muted">計算の根拠：国土地理院 ${esc(slope.src)}、グリーン内の${slope.n}点に平面を当てはめ（当てはめのずれ ${Math.round(slope.rms * 100)}cm）。${slope.shapeKnown ? '' : 'グリーンの形が地図にないため、中心の周り半径8mで計算。'}標高は0.1m単位のため、緩い傾斜ほど誤差が大きくなります。段差・細かいアンジュレーション・芝目は分かりません。</p>`;
     render();
   } catch { if (!auto) $('#greenRead').innerHTML = '<p class="muted">解析できませんでした。電波の良い所でもう一度お試しください。</p>'; }
   finally { greenBusy = false; }
@@ -203,44 +215,34 @@ export function fillShotClubs() {
 }
 
 // ---------------- GPS with smoothing ----------------
+let gpsError = '';
 function startGPS() {
   if (!('geolocation' in navigator)) { $('#gpsStatus').textContent = 'この端末はGPSに対応していません'; return; }
   if (watchId != null) return;
   watchId = navigator.geolocation.watchPosition(onFix, (err) => {
+    // errors do not stop a watch: clear it before restarting, otherwise watches pile up and fixes are counted twice
+    if (watchId != null) navigator.geolocation.clearWatch(watchId);
     watchId = null;
-    $('#gpsStatus').textContent = err.code === 1 ? '位置情報がオフです（地図→「現在地を指定」で手動指定）' : 'GPS信号を探しています…';
+    gpsError = err.code === 1 ? '位置情報がオフです（地図→「現在地を指定」で手動指定）' : 'GPS信号を探しています…';
+    gpsBadge();
     if (err.code !== 1) setTimeout(startGPS, 5000);
   }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
 }
-let precise = null; // { until, fixes[] } while measuring, { lockUntil, pos } once locked
 function onFix(pos) {
-  if (manualMe) return;
-  const p = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy || 30, t: Date.now(), speed: pos.coords.speed };
+  gpsError = '';
   if (Number.isFinite(pos.coords.heading) && (pos.coords.speed || 0) > 0.8) gpsHeading = pos.coords.heading;
-  if (p.acc > 80 && me) return; // ignore very poor fixes once we have one
-  // precise measurement in progress: collect, then lock the averaged position
-  if (precise?.until) {
-    precise.fixes.push(p);
-    if (Date.now() >= precise.until) finishPrecise();
-    else { $('#gpsStatus').textContent = `精密計測中… ${Math.ceil((precise.until - Date.now()) / 1000)}秒（動かないで）`; return; }
-  }
-  if (precise?.lockUntil) {
-    // keep the locked position until the player walks away (>6m) or 90s pass
-    if (Date.now() < precise.lockUntil && dist(precise.pos, p) < Math.max(6, p.acc * 0.8)) { render(); return; }
-    precise = null; fixes.length = 0;
-  }
-  // walking resets the average; standing still averages the last fixes weighted by accuracy
-  if (fixes.length && dist(fixes[fixes.length - 1], p) > Math.max(8, p.acc)) fixes.length = 0;
-  fixes.push(p); while (fixes.length > 8) fixes.shift();
-  let w = 0, la = 0, lo = 0;
-  for (const f of fixes) { const k = 1 / Math.max(3, f.acc) ** 2; w += k; la += f.lat * k; lo += f.lon * k; }
-  me = { lat: la / w, lon: lo / w };
-  meAcc = Math.max(2, Math.min(...fixes.map((f) => f.acc)) / Math.sqrt(fixes.length));
-  gpsBadge();
+  const wasMeasuring = !!gps.measure;
+  const st = gps.push({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, t: Date.now(), speed: pos.coords.speed });
+  if (manualMe) return;
+  applyGps(st);
+  if (wasMeasuring && !gps.measure) afterPrecise();
+  if (st.mode === 'measuring') return;
   if ($('#autoHole').checked && holes.length) autoHole();
   detectCourse();
   render();
 }
+// refresh the status line every second so the age of the fix is always visible
+setInterval(() => { if (document.visibilityState === 'visible' && $('#gpsStatus')) gpsBadge(); }, 1000);
 
 function autoHole() {
   const cur = holes[holeIdx], next = holes[holeIdx + 1];
@@ -338,7 +340,7 @@ export async function loadCourse(force) {
   scorecard = null;
   try { const { bundledCourses } = await import('./osm.js'); const b = (await bundledCourses()).find((x) => x.id === (c.osmId || c.id)); if (b?.scorecard) scorecard = await (await fetch(`data/sc/${b.id}.json`)).json(); } catch {}
   rebuild(true);
-  try { wx = await weather(c.lat, c.lon); render(); } catch {}
+  await refreshWind();
 }
 
 let allHoles = [];
@@ -349,8 +351,17 @@ const activeSet = () => (cid() && state.ui.holeSet?.[cid()]) || 0;
 function rebuild(first) {
   const keep = curHole()?.key ?? state.ui.holeKey;
   allHoles = buildHoles(features, { ...(features?.estHoles || {}), ...communityData, ...userHoles() });
+  // 2-green systems: use the green the player picked for this hole (default: the first option)
+  for (const h of allHoles) {
+    if (!h.greenOptions) continue;
+    const i = state.ui.greenAlt?.[cid()]?.[h.key] || 0;
+    const g = h.greenOptions[i] || h.greenOptions[0];
+    if (g !== h.greenOptions[0] || h.source !== 'osm' || !h.green) { h.green = g; h.center = g.c; }
+    h.greenIdx = h.greenOptions.indexOf(h.green);
+  }
   // official scorecard: par and yardage by course / hole number
-  for (const h of allHoles) { const sc = scorecard?.courses?.[h.set || 0]?.holes?.[h.no - 1]; if (sc) { h.par = sc.par; h.parEst = false; h.officialY = sc.yd; } }
+  // only for holes whose number is known (mapped, registered or confirmed with 番号修正) — never for an estimated number
+  for (const h of allHoles) { if (h.source === 'est') continue; const sc = scorecard?.courses?.[h.set || 0]?.holes?.[h.no - 1]; if (sc) { h.par = sc.par; h.parEst = false; h.officialY = sc.yd; } }
   const sets = [...new Set(allHoles.map((h) => h.set || 0))].sort((a, b) => a - b);
   if (!sets.includes(activeSet())) setSet(0, false);
   holes = allHoles.filter((h) => (h.set || 0) === activeSet());
@@ -394,6 +405,9 @@ export function gotoHole(i, fit) {
   const lenY = h.lengthM ? m2y(h.lengthM) : null;
   $('#holeMeta').textContent = `PAR ${h.par ?? '-'}${h.parEst ? '（推定）' : ''} · ${h.officialY ? `公式 ${fmt(h.officialY)}${ul()}` : lenY ? fmt(lenY) + ul() : '距離データなし'}${h.hcp ? ' · HDCP ' + h.hcp : ''}`;
   $('#btnRenumber').hidden = !['est', 'user', 'community', 'learned'].includes(h.source);
+  const gb = $('#btnGreenAlt');
+  gb.hidden = !h.greenOptions;
+  if (h.greenOptions) gb.textContent = greenSideLabel(h, h.greenIdx ?? 0);
   $('#holeSrc').textContent = { osm: '', user: '登録済み', learned: '自動学習', community: 'みんなの地図', est: '自動推定', none: '未登録' }[h.source] || '';
   $('#holeSrc').className = 'src-badge ' + h.source;
   $('#holeNote').value = cid() ? getNote(cid(), h.key) : '';
@@ -417,7 +431,8 @@ function renderStrategy() {
     return;
   }
   strat = holeStrategy({ ...h, center: holeCenter(h) }, features, state.clubs);
-  $('#holeTips').innerHTML = strat.tips.map((t) => `<li>${esc(t)}</li>`).join('');
+  const estNote = h.source === 'est' ? ['このホールのティー位置と長さ・パーは地図からの推定です。ティーショットの距離やハザードまでの距離は目安として見てください。'] : [];
+  $('#holeTips').innerHTML = [...estNote, ...strat.tips].map((t, i) => `<li${estNote.length && i === 0 ? ' class="muted"' : ''}>${esc(t)}</li>`).join('');
 }
 
 // ---------------- main render ----------------
@@ -437,7 +452,7 @@ function render() {
   if (view === 'map') renderMapOverlay(c);
   renderMappingCard(h);
   const o = originFor(h, c);
-  $('#ydMainLabel').textContent = o && o !== me ? 'ティーから（プレビュー）' : 'グリーンセンター';
+  $('#ydMainLabel').textContent = o && o !== me ? (h?.source === 'est' ? '推定ティーから（目安）' : 'ティーから（プレビュー）') : 'グリーンセンター';
   if (!o || !c) {
     $('#ydCenter').textContent = '---'; $('#ydFront').textContent = '---'; $('#ydBack').textContent = '---'; $('#ydPin').hidden = true;
     $('#ydUnit').textContent = unit() === 'm' ? 'm' : 'yd';
@@ -447,7 +462,7 @@ function render() {
     $('#targetLine').hidden = true;
     return;
   }
-  const g = greenDistances(o, h, h.center || c);
+  const g = greenDist(o, h.green, h.center || c);
   $('#ydCenter').textContent = fmt(g.center);
   $('#ydFront').textContent = fmt(g.front);
   $('#ydBack').textContent = fmt(g.back);
@@ -470,23 +485,6 @@ function originFor(h, c) {
   return h?.tee || (me && c ? me : null);
 }
 
-function greenDistances(p, h, gc) {
-  const center = m2y(dist(p, gc));
-  if (!h.green?.pts?.length) return { center, front: null, back: null };
-  const b = (bearing(p, gc) * Math.PI) / 180, ux = Math.sin(b), uy = Math.cos(b);
-  const k = Math.cos((p.lat * Math.PI) / 180) * 111320, kl = 110540;
-  let lo = Infinity, hi = -Infinity;
-  // project every edge point onto the line of play; front/back are the nearest/farthest edges
-  for (const q of h.green.pts) {
-    const x = (q.lon - p.lon) * k, y = (q.lat - p.lat) * kl;
-    const along = x * ux + y * uy, off = Math.abs(x * uy - y * ux);
-    if (off > 18) continue;
-    lo = Math.min(lo, along); hi = Math.max(hi, along);
-  }
-  if (!isFinite(lo)) return { center, front: center - 12, back: center + 12 };
-  return { center, front: m2y(lo), back: m2y(hi) };
-}
-
 function renderTarget(c) {
   const box = $('#targetLine');
   const o = originFor(curHole(), c);
@@ -507,7 +505,7 @@ function conditions(shotBearing) {
 
 function renderAdvice() {
   const h = curHole(); const c = holeCenter(h);
-  if (wx && Number.isFinite(wx.speed)) $('#windPill').textContent = `${compass(wx.dir)}の風 ${wx.speed.toFixed(1)}m/s · ${Math.round(wx.temp)}℃`;
+  if (wx && Number.isFinite(wx.speed)) $('#windPill').textContent = `予報：${compass(wx.dir)}の風 ${wx.speed.toFixed(1)}m/s${Number.isFinite(wx.gust) ? `（最大${wx.gust.toFixed(0)}）` : ''} · ${Math.round(wx.temp)}℃`;
   const o = originFor(h, c);
   if (!o || !c) return;
   const br = bearing(o, c);
@@ -535,6 +533,14 @@ async function updateElevation(c) {
     if (Number.isFinite(a) && Number.isFinite(b)) { elevDiff = b - a; renderAdvice(); }
   } catch { elevDiff = null; }
 }
+
+// wind is a forecast (10 m height, course centre): refresh every 15 minutes during the round
+let wxAt = 0;
+async function refreshWind() {
+  if (!state.course) return;
+  try { wx = await weather(state.course.lat, state.course.lon); wxAt = Date.now(); render(); } catch {}
+}
+setInterval(() => { if (state.course && Date.now() - wxAt > 15 * 60e3 && document.visibilityState === 'visible') refreshWind(); }, 60e3);
 
 // ---------------- unmapped holes: nearby greens + mapping ----------------
 let mapping = false;
@@ -622,7 +628,7 @@ function endShot(manual) {
   state.pendingShot = null;
   if (yards < 3) { save('shot'); return; }
   state.shots ??= [];
-  state.shots.push({ ...ps, to: { ...me }, yards: Math.round(yards) });
+  state.shots.push({ ...ps, to: { ...me }, yards: Math.round(yards), accTo: meAcc, kind: 'total' }); // GPS measures carry + roll
   save('shot');
   $('#shotHint').textContent = '打つ地点で押す';
   toast(`${ps.club}: ${fmt(yards)}${ul()}`);
@@ -789,6 +795,19 @@ async function saveOffline() {
   await Promise.all(Array.from({ length: 6 }, worker));
   try { await fetch(`data/c/${state.course.osmId || state.course.id}.json`); } catch {}
   st.textContent = `保存しました（${done - fail}枚）。電波がなくても、このコースのホールビューが表示できます。`;
+}
+
+/** "左グリーン" / "右グリーン" as seen from the fairway, for 2-green holes */
+function greenSideLabel(h, i) {
+  const opts = h?.greenOptions; if (!opts || opts.length < 2) return 'グリーン';
+  const from = h.tee || (h.line?.length ? h.line[0] : null);
+  const a = opts[0].c, b = opts[1].c;
+  if (!from) return i === 0 ? 'グリーン1' : 'グリーン2';
+  // cross product of (from→mid) × (mid→green_i): + means left
+  const mid = { lat: (a.lat + b.lat) / 2, lon: (a.lon + b.lon) / 2 };
+  const vx = mid.lon - from.lon, vy = mid.lat - from.lat;
+  const g = opts[i].c, wx = g.lon - mid.lon, wy = g.lat - mid.lat;
+  return vx * wy - vy * wx > 0 ? '左グリーン' : '右グリーン';
 }
 
 // ---------------- renumber estimated / registered holes ----------------

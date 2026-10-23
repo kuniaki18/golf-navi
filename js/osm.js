@@ -1,6 +1,7 @@
 // Course data. Primary source: the nationwide dataset bundled with the app (built from OpenStreetMap,
 // see tools/extract.mjs). Fallback: the live Overpass API. Plus holes the user mapped themselves.
-import { centroid, dist, nearestOnLine, lineLength, fetchJSON, sleep } from './util.js';
+import { centroid, polygonCentroid, dist, nearestOnLine, lineLength, fetchJSON, sleep } from './util.js';
+import { greensAround } from './geo.js';
 
 const ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
@@ -125,7 +126,7 @@ export async function courseFeatures(course, { onRetry, liveFallback = true } = 
 
 const pts = (flat) => { const out = []; for (let i = 0; i + 1 < flat.length; i += 2) out.push({ lat: flat[i], lon: flat[i + 1] }); return out; };
 let seq = 0;
-function poly(rings, kind) { const p = pts(rings[0] || []); return { id: `${kind}${seq++}`, pts: p, c: p.length ? centroid(p) : null }; }
+function poly(rings, kind) { const p = pts(rings[0] || []); return { id: `${kind}${seq++}`, pts: p, c: p.length ? polygonCentroid(p) : null }; }
 
 export function parseCompact(j) {
   const f = EMPTY();
@@ -155,7 +156,7 @@ export function parseFeatures(elements) {
     const g = geomOf(el);
     if (!g.length) continue;
     const kind = t.golf || (t.natural === 'water' ? 'water_hazard' : '');
-    const base = { id: `${el.type}/${el.id}`, pts: g, c: centroid(g) };
+    const base = { id: `${el.type}/${el.id}`, pts: g, c: polygonCentroid(g) };
     if (kind === 'hole') { const ref = parseInt(t.ref, 10); f.holes.push({ ...base, ref: Number.isFinite(ref) ? ref : null, par: t.par ? parseInt(t.par, 10) : null, hcp: t.handicap ? parseInt(t.handicap, 10) : null, distTag: t.dist ? parseFloat(t.dist) : null, name: t.name || '' }); }
     else if (kind === 'green') f.greens.push(base);
     else if (kind === 'tee') f.tees.push(base);
@@ -216,6 +217,14 @@ export function buildHoles(f, userHoles = {}) {
     } else {
       out.push({ no: n, key, set, par: u?.par || null, line: [], tee: null, green: null, center: null, lengthM: 0, source: 'none' });
     }
+  }
+  // 2-green systems: keep both outlines as separate targets (never their midpoint)
+  for (const h of out) {
+    if (!h.center) continue;
+    const around = greensAround(f.greens, h.green?.c || h.center, 70);
+    if (!h.green && around[0] && dist(around[0].c, h.center) < 30) h.green = around[0];
+    const opts = h.green ? [h.green, ...around.filter((g) => g !== h.green)] : around;
+    if (opts.length >= 2) h.greenOptions = opts.slice(0, 2);
   }
   // estimate par from length when the data has none (shown as 推定)
   for (const h of out) if (!h.par && h.lengthM) { const y = h.lengthM / 0.9144; h.par = y < 250 ? 3 : y < 470 ? 4 : 5; h.parEst = true; }

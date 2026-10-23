@@ -41,6 +41,21 @@ export function xy(o, p) {
 export function unxy(o, v) {
   return { lat: o.lat + v.y / (rad * R), lon: o.lon + v.x / (rad * R * Math.cos(o.lat * rad)) };
 }
+/** area-weighted centroid of a polygon (closing duplicate point ignored); falls back to the vertex mean */
+export function polygonCentroid(pts) {
+  let p = pts;
+  if (p.length > 3 && p[0].lat === p[p.length - 1].lat && p[0].lon === p[p.length - 1].lon) p = p.slice(0, -1);
+  if (p.length < 3) return centroid(p);
+  const o = p[0];
+  let A = 0, cx = 0, cy = 0;
+  for (let i = 0; i < p.length; i++) {
+    const a = xy(o, p[i]), b = xy(o, p[(i + 1) % p.length]);
+    const cr = a.x * b.y - b.x * a.y;
+    A += cr; cx += (a.x + b.x) * cr; cy += (a.y + b.y) * cr;
+  }
+  if (Math.abs(A) < 1e-6) return centroid(p);
+  return unxy(o, { x: cx / (3 * A), y: cy / (3 * A) });
+}
 export function centroid(pts) {
   const n = pts.length || 1;
   return { lat: pts.reduce((s, p) => s + p.lat, 0) / n, lon: pts.reduce((s, p) => s + p.lon, 0) / n };

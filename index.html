@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
@@ -42,7 +42,7 @@
       <div class="hole-meta" id="holeMeta">PAR - · - y</div>
     </div>
     <button class="step" id="holeNext" aria-label="次のホール">›</button>
-    <div class="hole-side"><button class="set-btn" id="setBtn" hidden>コースA</button><button class="set-btn alt" id="btnRenumber" hidden>番号修正</button><label class="auto-toggle"><input type="checkbox" id="autoHole" checked> 自動</label></div>
+    <div class="hole-side"><button class="set-btn" id="setBtn" hidden>コースA</button><button class="set-btn alt" id="btnRenumber" hidden>番号修正</button><button class="set-btn alt" id="btnGreenAlt" hidden>グリーン</button><label class="auto-toggle"><input type="checkbox" id="autoHole" checked> 自動</label></div>
   </div>
 
   <div class="card renumber" id="renumberPanel" hidden>
@@ -234,7 +234,7 @@
   </div>
   <div class="card">
     <div class="card-head"><h2>今日のメンバー</h2><label class="btn small primary file-btn">スコアカードを読み取る<input type="file" id="ocrFile" accept="image/*" capture="environment"></label></div>
-    <p class="muted" id="playersEmpty">紙のスコアカードを撮影すると、全員の打数を自動で読み取ります（手書きOK・AIキーがあると高精度）。手入力もできます。</p>
+    <p class="muted" id="playersEmpty">紙のスコアカードを撮影すると、全員の打数を自動で読み取ります。AIキーを設定している場合はカードの写真をAI（Anthropic社）に送って読み取ります（手書きも可）。設定していない場合は端末の中だけで読み取ります。手入力もできます。</p>
     <div class="muted" id="ocrStatus"></div>
     <div class="table-wrap players-wrap"><table class="players" id="playersTable"></table></div>
     <div class="btn-row tight"><button class="btn small" id="btnAddPlayer">メンバーを追加</button><button class="btn small" id="btnPlayersToComp">全員のスコアをコンペに提出</button></div>
@@ -256,7 +256,7 @@
 
   <div class="vpane" data-vp="swing">
     <div class="card">
-      <p class="muted">スマホを固定して、全身とクラブが入るように撮影してください。骨格をこの端末の中で自動検出し（動画は外に送りません）、スイングを採点してアドバイスします。</p>
+      <p class="muted">スマホを固定して、全身とクラブが入るように撮影してください。骨格の検出と採点はこの端末の中で行い、動画は外部に送りません（「AIコーチに見てもらう」を押したときだけ、アドレス・トップ・インパクト・フィニッシュの4枚の画像をAI（Anthropic社）に送ります）。構えてから2秒ほど静止した状態で撮り始めると、アドレスを正しく判定できます。</p>
       <div class="form-grid">
         <label>撮影の向き<select id="swView"><option value="face">正面から</option><option value="dtl">後方（飛球線側）から</option></select></label>
         <label>利き手<select id="swHand"><option value="right">右打ち</option><option value="left">左打ち</option></select></label>
@@ -284,10 +284,11 @@
     <div id="swResult" hidden>
       <div class="card">
         <div class="sw-score" id="swScore"></div>
+        <ul class="sw-notes" id="swNotes"></ul>
         <div class="phases" id="swPhases"></div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>チェック項目</h2><button class="btn small primary" id="swAi">AIコーチに見てもらう</button></div>
+        <div class="card-head"><h2>チェック項目</h2><button class="btn small primary" id="swAi" title="4枚の画像をAnthropicに送信します">AIコーチに見てもらう</button></div>
         <div class="ai-out" id="swAiOut" hidden></div>
         <div id="swMetrics"></div>
       </div>
@@ -520,6 +521,8 @@
   </div>
   <div class="card">
     <div class="card-head"><h2>番手別の実測距離</h2><button class="btn small" id="btnApplyClub">設定に反映</button></div>
+    <p class="muted">ショット記録の「総距離」（転がりを含む）です。GPSの誤差が10mを超えた記録は使いません。</p>
+    <div id="clubApply" hidden></div>
     <div class="table-wrap"><table class="club-table" id="clubStats"></table></div>
   </div>
 </section>
@@ -580,7 +583,7 @@
   </div>
   <div class="card" id="feedback">
     <h2>ご意見・ご要望</h2>
-    <p class="muted">使いにくい所、ほしい機能、不具合など、なんでも作者に直接届きます。</p>
+    <p class="muted">使いにくい所、ほしい機能、不具合など、なんでも作者に直接届きます（メール送信サービス FormSubmit を経由して作者のメールに届きます。端末の種類とアプリの版も一緒に送ります）。</p>
     <div class="form-grid">
       <label>種類<select id="fbType"><option>機能の要望</option><option>使いにくい所</option><option>不具合の報告</option><option>コース情報の間違い</option><option>感想</option></select></label>
       <label>お名前（任意）<input id="fbName" autocomplete="nickname"></label>
@@ -640,7 +643,7 @@
 </div>
 <div class="photo-viewer" id="photoViewer" hidden><img id="photoViewerImg" alt=""><button class="btn small" id="memClose">閉じる</button></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <script type="module" src="js/app.js"></script>
 </body>
 </html>

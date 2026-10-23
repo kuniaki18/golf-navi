@@ -234,7 +234,7 @@ export class HoleView {
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(g.x, g.y, 2.5, 0, 7); ctx.fill();
 
     // green slope arrows (downhill), from the elevation analysis
-    if (this.mode === 'green' && d.slope && d.slope.pct >= 0.3) {
+    if (this.mode === 'green' && d.slope && d.slope.conf && d.slope.conf.level !== 'none') {
       const gp = h.green?.pts?.length ? h.green.pts : null;
       const ctr = S(f.green);
       const span = gp ? Math.max(...gp.map((p) => Math.hypot(S(p).x - ctr.x, S(p).y - ctr.y))) : 60;
@@ -252,7 +252,7 @@ export class HoleView {
       }
       ctx.restore();
       ctx.font = '700 12px system-ui';
-      tag(ctx, W / 2, 62, `傾斜 ${d.slope.pct.toFixed(1)}%（矢印＝下り）`, 'rgba(0,0,0,.7)', '#fff');
+      tag(ctx, W / 2, 62, `傾斜 ${d.slope.pct.toFixed(1)}%±${d.slope.pctSE.toFixed(1)} 信頼度${d.slope.conf.label}（矢印＝下り）`, 'rgba(0,0,0,.7)', '#fff');
     }
 
     // green distances / pin hint

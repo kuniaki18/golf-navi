@@ -57,3 +57,16 @@
 .src-badge.est, .src-badge.community { background: var(--surface-2); color: var(--green); border: 1px solid var(--green); }
 .set-btn.alt { background: var(--surface-2); color: var(--green); }
 .renumber { border: 2px solid var(--flag); }
+.gr-conf { margin: 0; font-size: .85rem; }
+.pill.conf-good { background: var(--good); color: #fff; border-color: var(--good); }
+.pill.conf-fair { background: var(--flag); color: #1a1400; border-color: var(--flag); }
+.pill.conf-poor { background: var(--danger); color: #fff; border-color: var(--danger); }
+.pill.conf-none { background: var(--surface-2); color: var(--muted); }
+.gps-status.q-wait { background: rgba(60,60,60,.85); }
+.gps-status.q-old { background: rgba(180,130,0,.92); }
+.gps-status.q-stale { background: rgba(120,120,120,.92); }
+.yardage.stale .yd-big, .yardage.stale .yd-num { opacity: .45; }
+.sw-notes { margin: 6px 0 0; padding-left: 1.2em; font-size: .8rem; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+.metric.na .m-score { color: var(--muted); font-size: .85rem; }
+.metric .basis summary { cursor: pointer; font-size: .8rem; color: var(--green); }
+.metric .basis p { margin: 4px 0 0; font-size: .8rem; }

@@ -4,6 +4,7 @@ import { state, save } from './store.js';
 import { total, isGIR } from './score.js';
 import { askClaude, COACH_SYSTEM, hasAI } from './ai.js';
 import { swingStats } from './swing.js';
+import { clubStats as clubStatsOf, carryRatio } from './clubmath.js';
 
 // rough amateur benchmarks per 18 holes by score level (approximate guide values)
 const BENCH = {
@@ -62,20 +63,7 @@ export function computeStats(rounds = state.rounds) {
   };
 }
 
-export function clubStats() {
-  const by = {};
-  for (const s of state.shots || []) {
-    if (!s.yards || /パター|PT/i.test(s.club)) continue;
-    (by[s.club] ??= []).push(s.yards);
-  }
-  return Object.entries(by).map(([club, arr]) => {
-    arr.sort((a, b) => a - b);
-    // drop the shortest 20% (mishits / layups) for a "typical good shot" number
-    const keep = arr.slice(Math.floor(arr.length * 0.2));
-    const avg = keep.reduce((s, x) => s + x, 0) / keep.length;
-    return { club, n: arr.length, avg: Math.round(avg), max: arr[arr.length - 1], min: arr[0] };
-  }).sort((a, b) => b.avg - a.avg);
-}
+export function clubStats() { return clubStatsOf(state.shots); }
 
 function issues(st, b) {
   const list = [];
@@ -101,10 +89,14 @@ export function initAnalysis() {
   $('#btnAiCoach').onclick = aiCoach;
   $('#btnApplyClub').onclick = () => {
     const cs = clubStats().filter((c) => c.n >= 3);
-    if (!cs.length) { toast('各番手3球以上のショット記録が必要です'); return; }
-    let n = 0;
-    for (const c of cs) { const cl = state.clubs.find((x) => x.name === c.club); if (cl) { cl.carry = c.avg; n++; } }
-    save('clubs'); toast(`${n}本のクラブ距離を実測値に更新しました`);
+    if (!cs.length) { toast('各番手3球以上のショット記録が必要です（GPSの誤差が10m以内のもの）'); return; }
+    const rows = cs.map((c) => ({ c, cur: state.clubs.find((x) => x.name === c.club) })).filter((x) => x.cur);
+    $('#clubApply').hidden = false;
+    $('#clubApply').innerHTML = `<p class="muted">GPSで測った距離は転がりを含む「総距離」です。設定は「キャリー」なので、一般的な転がりの割合で換算した推定キャリーを反映します。芝の状態や傾斜で転がりは変わるので、違和感があれば設定で直してください。</p>
+      <div class="table-wrap"><table><tr><th>番手</th><th>総距離</th><th>推定キャリー</th><th>今の設定</th></tr>${rows.map(({ c, cur }) => `<tr><td>${esc(c.club)}</td><td>${c.total}</td><td><b>${c.carryEst}</b></td><td>${cur.carry}</td></tr>`).join('')}</table></div>
+      <div class="btn-row"><button class="btn small primary" id="clubApplyOk">推定キャリーを反映</button><button class="btn small" id="clubApplyNo">やめる</button></div>`;
+    $('#clubApplyNo').onclick = () => ($('#clubApply').hidden = true);
+    $('#clubApplyOk').onclick = () => { for (const { c, cur } of rows) cur.carry = c.carryEst; save('clubs'); $('#clubApply').hidden = true; toast(`${rows.length}本のキャリーを更新しました`); renderAnalysis(); };
   };
   renderAnalysis();
 }
@@ -141,7 +133,7 @@ export function renderAnalysis() {
     drawTrend(st.scores, target);
   }
   const cs = clubStats();
-  $('#clubStats').innerHTML = cs.length ? `<tr><th>番手</th><th>平均</th><th>最大</th><th>回数</th><th>設定値</th></tr>` + cs.map((c) => `<tr><td>${esc(c.club)}</td><td><b>${c.avg}</b></td><td>${c.max}</td><td>${c.n}</td><td>${state.clubs.find((x) => x.name === c.club)?.carry ?? '-'}</td></tr>`).join('') : '<tr><td class="muted" style="white-space:normal">ナビ画面の「ショット記録」で計測した飛距離がここに貯まります（ヤード）。</td></tr>';
+  $('#clubStats').innerHTML = cs.length ? `<tr><th>番手</th><th>総距離（平均）</th><th>最大</th><th>回数</th><th>推定キャリー</th><th>設定キャリー</th></tr>` + cs.map((c) => `<tr><td>${esc(c.club)}</td><td><b>${c.total}</b></td><td>${c.max}</td><td>${c.n}</td><td>${c.carryEst}</td><td>${state.clubs.find((x) => x.name === c.club)?.carry ?? '-'}</td></tr>`).join('') : '<tr><td class="muted" style="white-space:normal">ナビ画面の「ショット記録」で計測した飛距離がここに貯まります（ヤード）。</td></tr>';
 }
 const fmtV = (v, u) => (u === '%' ? v.toFixed(0) + '%' : v.toFixed(1) + u);
 

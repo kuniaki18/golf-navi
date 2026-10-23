@@ -1,0 +1,7 @@
+{
+  "name": "kunikuni-golf",
+  "private": true,
+  "type": "module",
+  "description": "KUNIKUNIゴルフ (static PWA). package.json only marks js/ as ES modules for the unit tests.",
+  "scripts": { "test": "node --test tools/test/*.test.mjs" }
+}
