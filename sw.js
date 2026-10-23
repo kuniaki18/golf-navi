@@ -1,12 +1,12 @@
 // Offline support: app shell cached, map tiles cached as you browse (so the course map works with weak signal).
-const VERSION = 'v2.8.0';
+const VERSION = 'v2.9.0';
 const SHELL = `shell-${VERSION}`;
 const TILES = 'tiles-v1';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css', 'css/features.css',
   'js/app.js', 'js/util.js', 'js/store.js', 'js/osm.js', 'js/advice.js', 'js/strategy.js', 'js/ai.js', 'js/navi.js',
   'js/courses.js', 'js/gora.js', 'js/score.js', 'js/tracer.js', 'js/booking.js', 'js/analysis.js', 'js/weather.js', 'js/group.js',
-  'js/holeview.js', 'js/coursebook.js', 'js/swing.js', 'js/memory.js', 'js/ocr.js', 'js/onboard.js', 'js/greenslope.js', 'js/community.js', 'js/feedback.js', 'js/gpsfilter.js', 'js/geo.js', 'js/swingeval.js', 'js/clubmath.js', 'css/v2.css', 'css/v3.css', 'css/v4.css', '404.html',
+  'js/holeview.js', 'js/coursebook.js', 'js/swing.js', 'js/memory.js', 'js/ocr.js', 'js/onboard.js', 'js/greenslope.js', 'js/community.js', 'js/feedback.js', 'js/gpsfilter.js', 'js/geo.js', 'js/swingeval.js', 'js/clubmath.js', 'css/v2.css', 'css/v3.css', 'css/v4.css', 'css/v5.css', '404.html',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
 ];

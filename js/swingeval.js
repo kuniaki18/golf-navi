@@ -12,7 +12,24 @@ const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, v: Math.min(a.v
 const d2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const angle = (a, b, c) => { const v1 = { x: a.x - b.x, y: a.y - b.y }, v2 = { x: c.x - b.x, y: c.y - b.y }; const cos = (v1.x * v2.x + v1.y * v2.y) / (Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y) || 1); return (Math.acos(clamp(cos, -1, 1)) * 180) / Math.PI; };
 const smooth = (arr, k = 2) => arr.map((_, i) => { let s = 0, n = 0; for (let j = Math.max(0, i - k); j <= Math.min(arr.length - 1, i + k); j++) { s += arr[j]; n++; } return s / n; });
-const minVis = (lm, ids) => Math.min(...ids.map((i) => lm[i]?.v ?? 0));
+// a landmark flagged o (outside the video frame) is only the model's guess, so it never counts as visible
+const visOf = (p) => (!p || p.o ? 0 : p.v ?? 0);
+const minVis = (lm, ids) => Math.min(...ids.map((i) => visOf(lm[i])));
+const PARTS = [['頭', [0]], ['肩', [11, 12]], ['手元', [15, 16]], ['腰', [23, 24]], ['ひざ', [25, 26]], ['足元', [27, 28]]];
+/** which body parts are outside the frame (or not visible) in a frame */
+export function hiddenParts(lm) { return PARTS.filter(([, ids]) => ids.some((i) => visOf(lm[i]) < MIN_VIS)).map(([n]) => n); }
+
+/** body scale: median torso length; when the hips are not in the picture, estimated from the shoulders / head */
+export function bodyScale(fr, view) {
+  const ok = (p) => visOf(p) >= 0.5;
+  const tors = fr.filter((f) => ok(f.lm[11]) && ok(f.lm[12]) && ok(f.lm[23]) && ok(f.lm[24])).map((f) => d2(mid(f.lm[11], f.lm[12]), mid(f.lm[23], f.lm[24]))).filter((x) => x > 0).sort((a, b) => a - b);
+  if (tors.length >= fr.length * 0.4) return { TL: tors[Math.floor(tors.length / 2)], estimated: false };
+  // fallbacks (rough body proportions): face-on shoulder width ≈ 0.7 × torso; down-the-line nose→shoulder ≈ 0.45 × torso
+  const alt = fr.filter((f) => ok(f.lm[11]) && ok(f.lm[12]) && ok(f.lm[0])).map((f) => (view === 'face' ? d2(f.lm[11], f.lm[12]) / 0.7 : d2(f.lm[0], mid(f.lm[11], f.lm[12])) / 0.45)).filter((x) => x > 0).sort((a, b) => a - b);
+  if (alt.length) return { TL: alt[Math.floor(alt.length / 2)], estimated: true };
+  const any = fr.map((f) => d2(mid(f.lm[11], f.lm[12]), mid(f.lm[23], f.lm[24]))).filter((x) => x > 0).sort((a, b) => a - b);
+  return { TL: any[Math.floor(any.length / 2)] || 100, estimated: true };
+}
 
 /** find the address: the last still moment (hands below the shoulders) before the backswing */
 export function findAddress(fr, hx, hy, TL) {
@@ -39,15 +56,14 @@ export function evaluate(fr, view, hand) {
   const hands = fr.map((f) => mid(f.lm[15], f.lm[16]));
   const rawY = hands.map((h) => h.y);
   const hy = smooth(rawY), hx = smooth(hands.map((h) => h.x));
-  const torso = (f) => d2(mid(f.lm[11], f.lm[12]), mid(f.lm[23], f.lm[24]));
-  const TLs = fr.map(torso).filter((x) => x > 0).sort((a, b) => a - b);
-  const TL = TLs[Math.floor(TLs.length / 2)] || 100; // median torso length: robust scale
+  const scale = bodyScale(fr, view);
+  const TL = scale.TL; // robust body scale (median torso length)
 
   const addr = findAddress(fr, hx, hy, TL);
   const a = addr.index;
   const a0 = { x: hx[a], y: hy[a] };
   let s = fr.findIndex((_, i) => i > a && Math.hypot(hx[i] - a0.x, hy[i] - a0.y) > 0.18 * TL);
-  if (s < 0) throw new Error('スイングの動きを検出できませんでした。アドレスからフィニッシュまで映る動画を使ってください');
+  if (s < 0) throw new Error('スイングの動きを検出できませんでした。アドレスからフィニッシュまでが入った動画を使ってください（体の一部が画面からはみ出していても解析できます）');
   // walk back to where the hands actually started moving (the threshold above fires a few frames late)
   while (s > a + 1 && Math.hypot(hx[s - 1] - a0.x, hy[s - 1] - a0.y) > 0.02 * TL) s--;
   s = Math.max(a, s - 1);
@@ -59,7 +75,7 @@ export function evaluate(fr, view, hand) {
   let imp = -1, best = 0;
   // impact height uses the raw hand position: smoothing blurs the bottom of a fast downswing
   for (let i = top + 1; i < fr.length; i++) { if (rawY[i] > a0.y - 0.25 * TL && speed[i] + speed[i - 1] > best) { best = speed[i] + speed[i - 1]; imp = i; } if (imp > 0 && hy[i] < a0.y - 0.6 * TL) break; }
-  if (imp < 0 || top <= s) throw new Error('トップとインパクトを判別できませんでした。カメラを固定して、体全体が入るように撮ってください');
+  if (imp < 0 || top <= s) throw new Error('トップとインパクトを判別できませんでした。カメラを固定して、少なくとも頭から腰までが入るように撮ってください');
   for (let i = Math.max(top + 1, imp - 3); i <= Math.min(fr.length - 1, imp + 2); i++) if (rawY[i] > rawY[imp]) imp = i;
   let fin = imp;
   for (let i = imp; i < fr.length; i++) if (hy[i] < hy[fin]) fin = i;
@@ -71,18 +87,19 @@ export function evaluate(fr, view, hand) {
    * @param need  [[landmarks, ids], ...] joints this metric relies on
    * @param basis how it is measured, the target, and how the score is derived
    */
+  const hidden = (need) => { const n = [...new Set(need.flatMap(([lm, ids]) => PARTS.filter(([, p]) => p.some((i) => ids.includes(i) && visOf(lm[i]) < MIN_VIS)).map(([nm]) => nm)))]; return n.length ? n.join('・') : '使う関節'; };
   const add = (key, name, value, score, need, basis, good, bad, drill) => {
     const conf = Math.min(...need.map(([lm, ids]) => minVis(lm, ids)));
     const ok = conf >= MIN_VIS && Number.isFinite(score);
     metrics.push({ key, name, value, basis, conf: Math.round(conf * 100) / 100, valid: ok, score: ok ? Math.round(clamp(score, 0, 100)) : null,
-      advice: !ok ? '関節がはっきり映っていないため判定できません（撮影の向き・明るさ・全身が映っているかを確認）' : score >= 70 ? good : bad, drill: ok && score < 70 ? drill : '' });
+      advice: !ok ? `${hidden(need)}が映っていない（画面の外・見えにくい）ため判定できません` : score >= 70 ? good : bad, drill: ok && score < 70 ? drill : '' });
   };
 
   // tempo uses real time stamps, so dropped frames don't change it
   const tb = fr[top].t - fr[s].t, td = fr[imp].t - fr[top].t;
   const tempo = tb / Math.max(1 / 60, td);
   const timeRes = Math.max(...fr.slice(1).map((f, i) => f.t - fr[i].t)); // worst gap between analysed frames
-  add('tempo', 'テンポ（バック:ダウン）', `${tempo.toFixed(1)} : 1`, 100 - Math.abs(tempo - 3) * 28, [[A, [15, 16]], [T, [15, 16]], [I, [15, 16]]],
+  add('tempo', 'テンポ（バック:ダウン）', `${tempo.toFixed(1)} : 1`, 100 - Math.abs(tempo - 3) * 28, [[A, [15, 16]], [I, [15, 16]]],
     `バックスイング（始動→トップ）とダウンスイング（トップ→インパクト）の時間の比。目安3:1で満点、1ずれるごとに28点減点。コマ間隔${(timeRes * 1000).toFixed(0)}msのため、ダウンスイングの時間には±1コマの誤差があります。`,
     `理想に近いリズム（目安3:1）。バック${tb.toFixed(2)}秒・ダウン${td.toFixed(2)}秒。`,
     tempo < 3 ? '切り返しが早め（打ち急ぎの傾向）。トップで「間」を作りましょう。' : 'ダウンスイングがゆっくりめ。トップから加速を。',
@@ -153,12 +170,17 @@ export function evaluate(fr, view, hand) {
   if (!addr.detected) notes.push('アドレスで静止している場面が見つからなかったため、動画の最初のコマをアドレスとして扱いました。構えてから2秒ほど静止した状態で撮影すると正確になります。');
   if (viewWarning) notes.push(viewWarning);
   if (timeRes > 0.05) notes.push('解析できなかったコマがあり、テンポの精度が下がっています。');
+  if (scale.estimated) notes.push('腰が映っていないため、体の大きさの基準を肩・頭から推定しました。動きの大きさの数値は誤差が大きくなります。');
+  const cut = {};
+  for (const [k, lm] of [['アドレス', A], ['トップ', T], ['インパクト', I], ['フィニッシュ', F]]) for (const p of hiddenParts(lm)) (cut[p] ??= []).push(k);
+  for (const [p, ks] of Object.entries(cut)) notes.push(`${ks.join('・')}で${p}が映っていません（画面の外か見えにくい）。${p === '手元' && ks.includes('トップ') ? 'トップの手元の位置はAIの推定で、テンポは目安になります。' : 'この部分を使う項目は判定していません。'}`);
   if (valid.length < metrics.length) notes.push(`${metrics.length - valid.length}項目は関節が見えにくく判定できませんでした（合計点に含めていません）。`);
   return {
     view, hand, score, metrics, notes, validCount: valid.length,
     phases: { address: fr[a], start: fr[s], top: fr[top], impact: fr[imp], finish: fr[finEnd] },
     ref: { head: { x: head0.x, y: head0.y }, headR: Math.max(10, d2(A[7], A[8]) * 0.75 || TL * 0.12), hip: hip0, sh: sh0 },
     tempo: { ratio: tempo, back: tb, down: td },
-    vis: Math.min(...[0, 11, 12, 15, 16, 23, 24].map((i) => A[i].v ?? 0)),
+    vis: Math.min(...[0, 11, 12, 15, 16, 23, 24].map((i) => visOf(A[i]))),
+    scaleEstimated: scale.estimated,
   };
 }

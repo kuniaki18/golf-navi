@@ -4,7 +4,8 @@ import { evaluate } from '../../js/swingeval.js';
 import { rng, gauss } from './helpers.mjs';
 
 // synthetic face-on swing at 30 fps: address (still) → backswing 1.0 s → downswing 0.33 s → follow-through
-function swing({ fps = 30, lead = 0, noise = 0, seed = 1, wristVis = 0.9 } = {}) {
+// out(i, p, k): true when landmark i (frame k) lies outside the video frame (close-up filming)
+function swing({ fps = 30, lead = 0, noise = 0, seed = 1, wristVis = 0.9, out = null } = {}) {
   const r = rng(seed), fr = []; let t = 0;
   const base = () => {
     const lm = Array.from({ length: 33 }, () => ({ x: 500, y: 500, v: 0.9 }));
@@ -13,7 +14,11 @@ function swing({ fps = 30, lead = 0, noise = 0, seed = 1, wristVis = 0.9 } = {})
     P(23, 540, 560); P(24, 460, 560); P(25, 545, 700); P(26, 455, 700); P(27, 550, 830); P(28, 450, 830);
     return lm;
   };
-  const push = (hx, hy) => { const lm = base(); lm[15] = { x: hx, y: hy, v: wristVis }; lm[16] = { x: hx + 10, y: hy, v: wristVis }; fr.push({ t, lm }); t += 1 / fps; };
+  const push = (hx, hy) => {
+    const lm = base(); lm[15] = { x: hx, y: hy, v: wristVis }; lm[16] = { x: hx + 10, y: hy, v: wristVis };
+    if (out) lm.forEach((p, i) => { if (out(i, p, fr.length)) p.o = true; });
+    fr.push({ t, lm }); t += 1 / fps;
+  };
   for (let i = 0; i < lead; i++) push(700 - i * 4, 450 + (i % 5) * 6); // walking in / waggle before the address
   for (let i = 0; i < 0.5 * fps; i++) push(500, 600);
   const B = Math.round(1.0 * fps), D = Math.round(0.33 * fps), F = Math.round(0.5 * fps);
@@ -61,4 +66,31 @@ test('metrics whose joints are hidden are 判定不可 and excluded from the tot
 test('every metric explains its basis', () => {
   const r = evaluate(swing(), 'face', 'right');
   for (const m of r.metrics) assert.ok(m.basis && m.basis.length > 20, m.key);
+});
+
+test('close-up: feet cut off → knee / finish 判定不可, the rest still scored', () => {
+  const r = evaluate(swing({ out: (i, p) => p.y > 760 }), 'face', 'right');
+  const by = Object.fromEntries(r.metrics.map((m) => [m.key, m]));
+  assert.equal(by.knee.valid, false);
+  assert.equal(by.finish.valid, false);
+  assert.match(by.knee.advice, /足元/);
+  assert.ok(r.score != null && r.validCount >= 4);
+  assert.ok(r.notes.some((n) => /足元が映っていません/.test(n)));
+  const full = evaluate(swing(), 'face', 'right');
+  for (const k of ['head', 'hipsway', 'turn', 'tempo']) assert.equal(by[k].score, Object.fromEntries(full.metrics.map((m) => [m.key, m.score]))[k], k);
+});
+
+test('close-up: hands leave the frame at the top → tempo still measured, arm 判定不可', () => {
+  const r = evaluate(swing({ out: (i, p) => (i === 15 || i === 16) && p.y < 300 }), 'face', 'right');
+  const by = Object.fromEntries(r.metrics.map((m) => [m.key, m]));
+  assert.equal(by.arm.valid, false);
+  assert.ok(by.tempo.valid && Math.abs(r.tempo.ratio - 3) < 0.45);
+  assert.ok(r.notes.some((n) => /トップの手元の位置はAIの推定/.test(n)));
+});
+
+test('upper body only (hips and below out of frame) → still analysed with an estimated scale', () => {
+  const r = evaluate(swing({ out: (i, p) => p.y > 500 && i !== 15 && i !== 16 }), 'face', 'right');
+  assert.ok(r.scaleEstimated);
+  assert.ok(r.notes.some((n) => /腰が映っていない/.test(n)));
+  assert.ok(r.metrics.find((m) => m.key === 'head').valid);
 });

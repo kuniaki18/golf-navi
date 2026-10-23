@@ -1,0 +1,128 @@
+/* ---------- v5 look: deep fairway green + championship gold, glass tab bar, glowing yardage ---------- */
+:root {
+  --bg: #edf2ee;
+  --surface: #ffffff;
+  --surface-2: #f2f6f3;
+  --line: #dce5de;
+  --green: #12784a;
+  --flag: #e0a412;
+  --bar: #062116;
+  --r: 18px;
+  --grad: linear-gradient(135deg, #0e5a37 0%, #17905a 100%);
+  --grad-gold: linear-gradient(180deg, #fff6cf 0%, #ffd84f 42%, #f2b40c 100%);
+  --hero: radial-gradient(120% 90% at 50% 0%, #1c7049 0%, #0b3322 55%, #061a11 100%);
+  --glass: rgba(255, 255, 255, .82);
+  --ring: rgba(18, 120, 74, .14);
+  --shadow: 0 1px 1px rgba(6, 33, 22, .04), 0 6px 20px rgba(6, 33, 22, .07);
+  --lift: 0 10px 28px rgba(14, 90, 55, .28);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #060d09;
+    --surface: #0e1913;
+    --surface-2: #14231b;
+    --line: #1f3227;
+    --green: #35c47d;
+    --green-ink: #03140b;
+    --flag: #ffc93d;
+    --bar: #040d08;
+    --grad: linear-gradient(135deg, #1f9d62 0%, #3fd68a 100%);
+    --glass: rgba(14, 25, 19, .78);
+    --ring: rgba(53, 196, 125, .16);
+    --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 8px 24px rgba(0, 0, 0, .45);
+    --lift: 0 10px 28px rgba(31, 157, 98, .3);
+  }
+}
+
+body { background: radial-gradient(140% 60% at 50% -10%, color-mix(in srgb, var(--green) 9%, var(--bg)) 0%, var(--bg) 60%) fixed, var(--bg);
+  padding-bottom: calc(var(--tabbar-h) + 22px + env(safe-area-inset-bottom, 0px)); }
+
+/* top bar */
+body::before { background: #05170f; }
+.topbar { background: linear-gradient(115deg, #04140d 0%, #0b3523 60%, #135438 100%); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); border-bottom: 1px solid rgba(255, 255, 255, .06); }
+.brand { font-size: 1.32rem; letter-spacing: .06em; }
+.brand small { background: var(--grad-gold); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.course-chip { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .16); backdrop-filter: blur(6px); }
+
+/* cards & headings */
+.card, .hole-bar, .course-item, .menu-tile, .target-line { border-radius: var(--r); border: 1px solid var(--line); box-shadow: var(--shadow); }
+:root:not(.sun) .card, :root:not(.sun) .hole-bar { border-color: color-mix(in srgb, var(--line) 70%, transparent); }
+.card > h2, .card-head > h2, .card > .card-head h2 { display: flex; align-items: center; gap: 9px; letter-spacing: .02em; }
+.card > h2::before, .card-head > h2::before { content: ""; flex: none; width: 4px; height: 1.05em; border-radius: 2px; background: var(--grad-gold); }
+.page-head h1 { font-size: 1.55rem; letter-spacing: .03em; }
+
+/* buttons & controls */
+.btn { border-radius: 12px; transition: transform .12s ease, box-shadow .2s ease, background-color .2s ease; }
+.btn.primary { background: var(--grad); border: 0; color: #fff; box-shadow: var(--lift); }
+:root.sun .btn.primary { background: var(--green); box-shadow: none; }
+.btn:active { transform: scale(.97); }
+input, select, textarea { border-radius: 12px; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 4px var(--ring); }
+.seg { border: 0; background: var(--surface-2); border-radius: 13px; padding: 3px; gap: 3px; box-shadow: inset 0 0 0 1px var(--line); }
+.seg button { border: 0 !important; border-radius: 10px; background: transparent; min-height: 38px; transition: background-color .2s ease, color .2s ease; }
+.seg button.on { background: var(--grad); color: #fff; box-shadow: 0 4px 12px rgba(14, 90, 55, .25); }
+:root.sun .seg button.on { background: var(--green); }
+.step { border-radius: 14px; }
+.pill { border-radius: 999px; }
+
+/* floating glass tab bar */
+.tabbar { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); padding: 0 4px; border-radius: 24px; border: 1px solid var(--line);
+  background: var(--glass); -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); box-shadow: 0 12px 34px rgba(0, 0, 0, .18); }
+.tabbar button { font-size: .66rem; letter-spacing: .02em; }
+.tabbar button svg { position: relative; z-index: 1; transition: transform .2s ease; }
+.tabbar button::before { content: ""; position: absolute; top: 7px; left: 50%; width: 48px; height: 30px; margin-left: -24px; border-radius: 15px; background: transparent; transition: background-color .2s ease; }
+.tabbar button.on::before { background: var(--ring); }
+.tabbar button.on svg { transform: translateY(-1px); }
+:root.sun .tabbar { background: #fff; border: 2px solid #1a1a1a; }
+
+/* the yardage hero */
+.yardage { background: var(--hero); border: 1px solid rgba(255, 255, 255, .07); border-radius: 22px; padding: 18px 10px 16px; box-shadow: 0 14px 34px rgba(6, 26, 17, .35); position: relative; overflow: hidden; }
+.yardage::after { content: ""; position: absolute; inset: auto -20% -60% -20%; height: 80%; background: radial-gradient(closest-side, rgba(246, 194, 58, .16), transparent); pointer-events: none; }
+.yd-big { background: var(--grad-gold); -webkit-background-clip: text; background-clip: text; color: transparent; font-size: 5.4rem; }
+:root.sun .yd-big { background: none; color: #ffd200; filter: none; }
+.yd-num { color: #fff; }
+.yd-label { color: #9fc4af; letter-spacing: .14em; }
+.yd-side { position: relative; }
+
+/* hole bar & club */
+.hole-no b { font-size: 2.3rem; }
+.step { background: var(--surface-2); }
+.club-name { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; font-size: 3.4rem; }
+:root.sun .club-name { background: none; color: var(--green); }
+.target-line { border-left: 4px solid var(--flag); }
+
+/* maps */
+.map-wrap, .view-wrap { border-radius: 22px; box-shadow: 0 12px 30px rgba(6, 26, 17, .22); }
+.map-btn { border-radius: 14px; background: rgba(4, 16, 10, .72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, .12); }
+.gps-status { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+
+/* menu tiles */
+.menu-tile { transition: transform .15s ease; }
+.menu-tile:active { transform: scale(.97); }
+.menu-tile svg { box-sizing: content-box; padding: 9px; border-radius: 13px; background: var(--ring); }
+
+/* swing result: score ring */
+.sw-score .v { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; font-size: 2.9rem;
+  background: radial-gradient(closest-side, var(--surface) 80%, transparent 81% 100%), conic-gradient(var(--green) calc(var(--p, 0) * 1%), var(--surface-2) 0); }
+.metric .bar { height: 7px; border-radius: 4px; }
+.metric.ok .bar i { background: var(--grad); }
+.metric.warn .bar i { background: linear-gradient(90deg, #f08a24, #e2483b); }
+.phase img { border-radius: 12px; }
+
+/* onboarding */
+.onboard { background: radial-gradient(120% 70% at 50% 0%, #1a6a45 0%, #08281a 55%, #030c07 100%); }
+.ob-card { border-radius: 24px; border: 1px solid rgba(255, 255, 255, .08); }
+.ob-brand small { background: var(--grad-gold); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+@media (prefers-reduced-motion: reduce) { .btn, .seg button, .tabbar button svg, .menu-tile { transition: none; } }
+
+/* fixes: keep map overlays dark, keep headings on one line, clear the floating tab bar */
+.seg.view-tabs { background: rgba(4, 16, 10, .72); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.seg.view-tabs button { color: #fff; min-height: 32px; }
+.seg.view-tabs button.on { background: var(--grad-gold); color: #1a1400; box-shadow: none; }
+.card-head > h2 { flex: none; white-space: nowrap; }
+.yd-label { letter-spacing: .06em; }
+.install-banner { bottom: calc(var(--tabbar-h) + 22px + env(safe-area-inset-bottom, 0px)); border-radius: var(--r); }
+#toast { bottom: calc(var(--tabbar-h) + 26px + env(safe-area-inset-bottom, 0px)); }
+.card-head { flex-wrap: wrap; row-gap: 6px; }
+.install-banner { bottom: calc(var(--tabbar-h) + 30px + env(safe-area-inset-bottom, 0px)); }

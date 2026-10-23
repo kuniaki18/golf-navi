@@ -76,11 +76,11 @@ function draw() {
 function drawSkeleton(lm, color = '#30d5ff') {
   ctx.save(); ctx.lineWidth = Math.max(2, cv.width / 260); ctx.lineCap = 'round';
   for (const [a, b] of EDGES) {
-    if (lm[a].v < 0.4 || lm[b].v < 0.4) continue;
+    if (lm[a].v < 0.4 || lm[b].v < 0.4 || lm[a].o || lm[b].o) continue;
     ctx.strokeStyle = color; ctx.beginPath(); ctx.moveTo(lm[a].x, lm[a].y); ctx.lineTo(lm[b].x, lm[b].y); ctx.stroke();
   }
   ctx.fillStyle = '#ffd60a';
-  for (const i of [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) if (lm[i].v >= 0.4) { ctx.beginPath(); ctx.arc(lm[i].x, lm[i].y, Math.max(3, cv.width / 200), 0, 7); ctx.fill(); }
+  for (const i of [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) if (lm[i].v >= 0.4 && !lm[i].o) { ctx.beginPath(); ctx.arc(lm[i].x, lm[i].y, Math.max(3, cv.width / 200), 0, 7); ctx.fill(); }
   ctx.restore();
 }
 function drawReference(ref) {
@@ -108,7 +108,70 @@ async function getLandmarker() {
   })();
   try { return await loading; } catch (e) { loading = null; throw e; }
 }
+// a fresh landmarker forgets the tracking state of the previous pass (the model file comes from the browser cache)
+function resetLandmarker() { try { landmarker?.close(); } catch {} landmarker = null; loading = null; }
 const seek = (t) => new Promise((res) => { const on = () => { vid.removeEventListener('seeked', on); res(); }; vid.addEventListener('seeked', on); vid.currentTime = t; });
+
+const KEY_LM = [0, 11, 12, 15, 16, 23, 24, 25, 26, 27, 28];
+
+/**
+ * one detection pass. roi = the part of the picture (in stage pixels, may extend past the frame) shown to the model:
+ * larger than the frame adds empty margins (body parts that leave the frame), smaller zooms in on a distant person.
+ */
+async function detectPass(lmk, roi, n, fps, onStep) {
+  const W = cv.width, H = cv.height, kv = vid.videoWidth / W;
+  const sc = 960 / Math.max(roi.w, roi.h);
+  const off = document.createElement('canvas'); off.width = Math.round(roi.w * sc); off.height = Math.round(roi.h * sc);
+  const octx = off.getContext('2d');
+  // the visible part of the frame inside the roi
+  const x0 = Math.max(0, roi.x), y0 = Math.max(0, roi.y), x1 = Math.min(W, roi.x + roi.w), y1 = Math.min(H, roi.y + roi.h);
+  const out = []; let ts = 0;
+  for (let k = 0; k < n; k++) {
+    const t = k / fps;
+    await seek(Math.min(t, vid.duration - 0.01));
+    octx.fillStyle = '#7f7f7f'; octx.fillRect(0, 0, off.width, off.height);
+    octx.drawImage(vid, x0 * kv, y0 * kv, (x1 - x0) * kv, (y1 - y0) * kv, (x0 - roi.x) * sc, (y0 - roi.y) * sc, (x1 - x0) * sc, (y1 - y0) * sc);
+    ts += 1000 / fps;
+    const p = lmk.detectForVideo(off, Math.round(ts)).landmarks?.[0];
+    if (p) out.push({ t, lm: p.map((q) => {
+      const x = roi.x + q.x * roi.w, y = roi.y + q.y * roi.h;
+      const o = x < -0.01 * W || x > 1.01 * W || y < -0.01 * H || y > 1.01 * H; // outside the video: position is only a guess
+      return o ? { x, y, v: q.visibility ?? 1, o: true } : { x, y, v: q.visibility ?? 1 };
+    }) });
+    if (k % 4 === 0) onStep(k / n, off, p ? out[out.length - 1].lm : null);
+  }
+  return out;
+}
+
+/** how well a pass saw the golfer, and the box around the body (stage pixels) */
+function passQuality(fr, n) {
+  const W = cv.width, H = cv.height;
+  let edge = 0; const hs = [], box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  for (const f of fr) {
+    let cut = false, ya = Infinity, yb = -Infinity;
+    for (const i of KEY_LM) {
+      const p = f.lm[i];
+      if (p.o || p.x < 0.015 * W || p.x > 0.985 * W || p.y < 0.015 * H || p.y > 0.985 * H) cut = true;
+      ya = Math.min(ya, p.y); yb = Math.max(yb, p.y);
+      box.x0 = Math.min(box.x0, p.x); box.x1 = Math.max(box.x1, p.x); box.y0 = Math.min(box.y0, p.y); box.y1 = Math.max(box.y1, p.y);
+    }
+    if (cut) edge++; hs.push((yb - ya) / H);
+  }
+  hs.sort((a, b) => a - b);
+  return { rate: fr.length / Math.max(1, n), edge: fr.length ? edge / fr.length : 1, height: hs[Math.floor(hs.length / 2)] || 0, box };
+}
+
+/** the second-pass view: room around a body that leaves the frame, or a zoom on a small one */
+function secondRoi(q) {
+  const W = cv.width, H = cv.height;
+  if (q.rate < 0.3 || !Number.isFinite(q.box.x0)) return { roi: { x: -0.3 * W, y: -0.3 * H, w: 1.6 * W, h: 1.6 * H }, why: 'pad' };
+  // the body box (a golf swing moves the hands above the head and far to the sides), with generous margins
+  const bw = q.box.x1 - q.box.x0, bh = q.box.y1 - q.box.y0, side = Math.max(bw, bh) * 1.5;
+  const cx = (q.box.x0 + q.box.x1) / 2, cy = (q.box.y0 + q.box.y1) / 2;
+  const w = Math.max(side * (W / Math.max(W, H)), 0.25 * W), h = Math.max(side * (H / Math.max(W, H)), 0.25 * H);
+  const pad = q.box.x0 < 0 || q.box.y0 < 0 || q.box.x1 > W || q.box.y1 > H || q.edge > 0.25;
+  return { roi: { x: cx - w / 2, y: cy - h / 2, w, h }, why: pad || w > W || h > H ? 'pad' : 'zoom' };
+}
 
 async function analyze() {
   if (!vid.src) { toast('先に動画を撮影するか選んでください'); return; }
@@ -116,28 +179,34 @@ async function analyze() {
   const status = $('#swStatus'); const bar = $('#swProgress');
   try {
     status.textContent = 'AIモデルを準備中…（初回のみ10MB程度ダウンロード）'; bar.hidden = false; bar.value = 0;
-    const lmk = await getLandmarker();
     vid.pause();
     const end = Math.min(vid.duration, 8);
     const fps = 30; // fixed, so results don't depend on how long the clip is
     const n = Math.floor(end * fps);
-    const off = document.createElement('canvas'); off.width = cv.width; off.height = cv.height;
-    const octx = off.getContext('2d', { willReadFrequently: false });
-    frames = [];
-    let ts = 0;
-    for (let k = 0; k < n; k++) {
-      const t = k / fps;
-      await seek(Math.min(t, vid.duration - 0.01));
-      octx.drawImage(vid, 0, 0, off.width, off.height);
-      ts += 1000 / fps;
-      const r = lmk.detectForVideo(off, Math.round(ts));
-      const p = r.landmarks?.[0];
-      if (p) frames.push({ t, lm: p.map((q) => ({ x: q.x * cv.width, y: q.y * cv.height, v: q.visibility ?? 1 })) });
-      if (k % 4 === 0) { bar.value = k / n; status.textContent = `骨格を検出中… ${Math.round((k / n) * 100)}%`; ctx.drawImage(off, 0, 0); if (p) drawSkeleton(frames[frames.length - 1].lm); }
+    const view = $('#swView').value, hand = $('#swHand').value;
+    const show = (label, base) => (k, off, lm) => { bar.value = base + k / 2; status.textContent = `${label} ${Math.round((base + k / 2) * 100)}%`; ctx.drawImage(off, 0, 0, cv.width, cv.height); };
+    const tryEval = (fr) => { if (fr.length < 10) return { err: new Error('体を検出できませんでした。明るい場所で、少なくとも頭から腰までが入るように撮影してください') }; try { return { r: evaluate(fr, view, hand) }; } catch (err) { return { err }; } };
+
+    resetLandmarker();
+    const full = { x: 0, y: 0, w: cv.width, h: cv.height };
+    const f1 = await detectPass(await getLandmarker(), full, n, fps, show('骨格を検出中…', 0));
+    const q1 = passQuality(f1, n), e1 = tryEval(f1);
+    let best = { frames: f1, ...e1, why: null };
+    // retry with a different view when the golfer left the frame, was too small, or was missed often
+    if (q1.rate < 0.7 || q1.edge > 0.25 || q1.height < 0.35 || e1.err) {
+      const { roi, why } = secondRoi(q1);
+      status.textContent = why === 'pad' ? '体が画面からはみ出しているため、範囲を広げてもう一度解析中…' : '人が小さく映っているため、拡大してもう一度解析中…';
+      resetLandmarker();
+      const f2 = await detectPass(await getLandmarker(), roi, n, fps, show(why === 'pad' ? '範囲を広げて解析中…' : '拡大して解析中…', 0.5));
+      const e2 = tryEval(f2);
+      const better = e2.r && (!e1.r || e2.r.validCount > e1.r.validCount || (e2.r.validCount === e1.r.validCount && f2.length >= f1.length));
+      if (better) best = { frames: f2, ...e2, why };
     }
     bar.hidden = true;
-    if (frames.length < 10) throw new Error('体を検出できませんでした。全身が映るように、明るい場所で撮影してください');
-    result = evaluate(frames, $('#swView').value, $('#swHand').value);
+    if (!best.r) throw best.err;
+    frames = best.frames; result = best.r;
+    if (best.why === 'pad') result.notes.unshift('体が画面からはみ出していたため、周りに余白を足して解析しました。画面の外に出た部分の位置はAIの推定です。');
+    if (best.why === 'zoom') result.notes.unshift('人が小さく映っていたため、人の周りを拡大して解析しました。');
     await captureThumbs(result);
     renderResult(result);
     await saveSwing(result);
@@ -167,7 +236,7 @@ function renderResult(r) {
   $('#swResult').hidden = false;
   const prev = (state.swings || []).find((x) => x.view === r.view && x.score != null);
   const diff = prev && r.score != null ? (r.score > prev.score ? ' ↑' : r.score < prev.score ? ' ↓' : '') : '';
-  $('#swScore').innerHTML = `<span class="v">${r.score ?? '—'}</span><span class="k">スイングスコア（参考値）${prev && r.score != null ? `・前回 ${prev.score}${diff}` : ''}</span><span class="t">${r.view === 'face' ? '正面' : '後方'}から · テンポ ${r.tempo.ratio.toFixed(1)}:1 · 判定できた項目 ${r.validCount}/${r.metrics.length}</span>`;
+  $('#swScore').innerHTML = `<span class="v" style="--p:${r.score ?? 0}">${r.score ?? '—'}</span><span class="k">スイングスコア（参考値）${prev && r.score != null ? `・前回 ${prev.score}${diff}` : ''}</span><span class="t">${r.view === 'face' ? '正面' : '後方'}から · テンポ ${r.tempo.ratio.toFixed(1)}:1 · 判定できた項目 ${r.validCount}/${r.metrics.length}</span>`;
   $('#swNotes').innerHTML = [
     ...r.notes.map((n) => `<li>${esc(n)}</li>`),
     '<li>点数は判定できた項目の平均です。撮影の向き・距離・明るさ・コマ数で変わる参考値で、動画だけでは球筋やスコアへの影響は判定できません。前回と比べるときは同じ条件で撮影してください。</li>',

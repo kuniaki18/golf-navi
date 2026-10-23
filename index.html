@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="css/v2.css">
 <link rel="stylesheet" href="css/v3.css">
 <link rel="stylesheet" href="css/v4.css">
+<link rel="stylesheet" href="css/v5.css">
 </head>
 <body>
 <header class="topbar">
@@ -256,7 +257,7 @@
 
   <div class="vpane" data-vp="swing">
     <div class="card">
-      <p class="muted">スマホを固定して、全身とクラブが入るように撮影してください。骨格の検出と採点はこの端末の中で行い、動画は外部に送りません（「AIコーチに見てもらう」を押したときだけ、アドレス・トップ・インパクト・フィニッシュの4枚の画像をAI（Anthropic社）に送ります）。構えてから2秒ほど静止した状態で撮り始めると、アドレスを正しく判定できます。</p>
+      <p class="muted">スマホを固定して撮影してください。<b>近くから撮って体の一部（足元やトップの手元）が画面からはみ出しても、自動で範囲を広げて解析します</b>（はみ出した部分を使う項目は「判定不可」になります。少なくとも頭から腰までは入れてください）。遠くから撮って人が小さく映った場合は、自動で拡大して解析します。骨格の検出と採点はこの端末の中で行い、動画は外部に送りません（「AIコーチに見てもらう」を押したときだけ、アドレス・トップ・インパクト・フィニッシュの4枚の画像をAI（Anthropic社）に送ります）。構えてから2秒ほど静止した状態で撮り始めると、アドレスを正しく判定できます。</p>
       <div class="form-grid">
         <label>撮影の向き<select id="swView"><option value="face">正面から</option><option value="dtl">後方（飛球線側）から</option></select></label>
         <label>利き手<select id="swHand"><option value="right">右打ち</option><option value="left">左打ち</option></select></label>
