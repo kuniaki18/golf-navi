@@ -529,7 +529,7 @@ export function gotoHole(i, fit) {
   const gb = $('#btnGreenAlt');
   gb.hidden = !h.greenOptions;
   if (h.greenOptions) gb.textContent = greenSideLabel(h, h.greenIdx ?? 0);
-  $('#holeSrc').textContent = { osm: '', user: '登録済み', learned: '自動学習', community: 'みんなの地図', est: '自動推定', none: '未登録' }[h.source] || '';
+  $('#holeSrc').textContent = h.drawn ? '作図' : { osm: '', user: '登録済み', learned: '自動学習', community: 'みんなの地図', est: '自動推定', none: '未登録' }[h.source] || '';
   $('#holeSrc').className = 'src-badge ' + h.source;
   $('#holeNote').value = cid() ? getNote(cid(), h.key) : '';
   $('#noteSaved').textContent = '';
@@ -560,7 +560,8 @@ function renderStrategy() {
     return;
   }
   strat = holeStrategy({ ...h, center: holeCenter(h) }, features, state.clubs);
-  const estNote = h.source === 'est' ? ['このホールのティー位置と長さ・パーは地図からの推定です。ティーショットの距離やハザードまでの距離は目安として見てください。'] : [];
+  const estNote = h.source === 'est' ? ['このホールのティー位置と長さ・パーは地図からの推定です。ティーショットの距離やハザードまでの距離は目安として見てください。']
+    : h.drawn ? ['このホールのティーとグリーンは、航空写真とコースのレイアウトから作図したものです（現地で未確認）。違っていたら地図の「登録」で直してください。'] : [];
   $('#holeTips').innerHTML = guide.join('') + [...estNote, ...strat.tips].map((t, i) => `<li${estNote.length && i === 0 ? ' class="muted"' : ''}>${esc(t)}</li>`).join('');
 }
 

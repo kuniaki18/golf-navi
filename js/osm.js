@@ -132,7 +132,7 @@ export function parseCompact(j) {
   const f = EMPTY();
   for (const h of j.holes || []) {
     const p = pts(h.g); const ref = parseInt(h.r, 10);
-    f.holes.push({ id: `h${seq++}`, pts: p, c: centroid(p), ref: Number.isFinite(ref) ? ref : null, par: h.p || null, hcp: h.h || null, distTag: h.d || null, name: h.n || '' });
+    f.holes.push({ id: `h${seq++}`, pts: p, c: centroid(p), ref: Number.isFinite(ref) ? ref : null, par: h.p || null, hcp: h.h || null, distTag: h.d || null, name: h.n || '', drawn: !!h.m });
   }
   for (const [k, arr] of [['greens', j.greens], ['tees', j.tees], ['bunkers', j.bunkers], ['water', j.water], ['fairways', j.fairways]]) {
     for (const rings of arr || []) { const x = poly(rings, k); if (x.c) f[k].push(x); }
@@ -186,7 +186,7 @@ export function buildHoles(f, userHoles = {}) {
     const end = h.pts[h.pts.length - 1];
     const green = nearestGreen(f, end, 90);
     const lengthM = h.distTag && h.distTag > 50 ? h.distTag : null;
-    return { no: h.ref, par: h.par, hcp: h.hcp, name: h.name, line: h.pts, tee: h.pts[0], green, center: green ? green.c : end, lengthM: lengthM || lineLength(h.pts), source: 'osm' };
+    return { no: h.ref, par: h.par, hcp: h.hcp, name: h.name, line: h.pts, tee: h.pts[0], green, center: green ? green.c : end, lengthM: lengthM || lineLength(h.pts), source: 'osm', drawn: !!h.drawn };
   });
   holes.sort((a, b) => (a.no ?? 99) - (b.no ?? 99));
   assignSets(holes);
@@ -206,9 +206,14 @@ export function buildHoles(f, userHoles = {}) {
     const u = userHoles[key];
     if (u?.hidden) continue;
     if (have.has(key)) {
-      // user may correct par on a mapped hole
-      if (u?.par) { const h = out.find((x) => x.key === key); h.par = u.par; }
-      continue;
+      const h = out.find((x) => x.key === key);
+      // a hole drawn by us from the aerial photo gives way to the player's own registration (or the community's)
+      if (h.drawn && u?.tee && u?.green && !u.est) out.splice(out.indexOf(h), 1);
+      else {
+        // user may correct par on a mapped hole
+        if (u?.par) h.par = u.par;
+        continue;
+      }
     }
     if (u?.tee || u?.green) {
       const line = [u.tee, ...(u.mid ? [u.mid] : []), u.green].filter(Boolean);
