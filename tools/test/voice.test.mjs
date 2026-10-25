@@ -91,3 +91,21 @@ test('the course-guide note is read on the tee, not mid-hole', () => {
   const mid = caddieScript({ ...base, center: 140, note: '打ち上げ。右の林はワンペナ', atTee: false }).join('');
   assert.doesNotMatch(mid, /コースガイド/);
 });
+
+test('on the tee of a long hole the tee-shot plan is read, the green is left for the approach', () => {
+  const t = say({ center: 405, playsLike: 412, club: { name: '1W', carry: 230 }, alt: null, layup: true, leave: 182, atTee: true,
+    teePlan: ['落下地点の右にハザード。フェアウェイ左サイドを狙うと安全。', '250yで左に曲がるので、ドライバーだと突き抜ける恐れ。250y前後で止まる番手が◎。'],
+    greenHazards: [{ type: 'bunker', where: '手前', carry: 400 }] });
+  assert.match(t, /ティーショットの作戦。落下地点の右にハザード/);
+  assert.match(t, /250ヤードで左に曲がる/);
+  assert.match(t, /番手がおすすめ/);
+  assert.doesNotMatch(t, /\d+y/);
+  assert.doesNotMatch(t, /グリーンの手前にバンカー/);
+});
+
+test('laying up from the fairway names the hazards around the landing spot', () => {
+  const t = say({ center: 260, playsLike: 262, club: { name: '5U', carry: 190 }, alt: null, layup: true, leave: 72,
+    layupHazards: [{ type: 'water', side: '右', front: 175, carry: 205 }] });
+  assert.match(t, /落とし所の右側に池。手前まで175、越えるまで205ヤード/);
+  assert.match(t, /左サイドへ運びましょう/);
+});

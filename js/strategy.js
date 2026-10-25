@@ -36,6 +36,9 @@ const opp = (lat) => (lat > 0 ? '右' : '左');
 /** returns { tips: string[], hazards: [...], summary } */
 export function holeStrategy(hole, features, clubs) {
   const tips = [];
+  // the tee-shot part is also kept on its own so the voice caddie can read it on the tee
+  const teePlan = [];
+  const tee = (t) => { tips.push(t); teePlan.push(t); };
   if (!hole) return { tips: ['このホールのデータがありません。グリーン位置を手動設定すると距離が出せます。'], hazards: [] };
   const L = m2y(hole.lengthM);
   const par = hole.par || (L < 250 ? 3 : L < 470 ? 4 : 5);
@@ -60,27 +63,27 @@ export function holeStrategy(hole, features, clubs) {
     if (danger.length) {
       const water = danger.find((h) => h.type === 'water');
       const left = danger.filter((h) => h.latY > 0).length, right = danger.filter((h) => h.latY < 0).length;
-      if (water) tips.push(`ティーショットの落下地点（${Math.round(water.alongY)}y付近・${side(water.latY)}）に池。ドライバーにこだわらず手前に刻む選択も。`);
-      if (left && !right) tips.push(`落下地点の左にハザード。フェアウェイ右サイドを狙うと安全。`);
-      else if (right && !left) tips.push(`落下地点の右にハザード。フェアウェイ左サイドを狙うと安全。`);
-      else if (left && right) tips.push(`落下地点は両サイドにハザードがあって狭い。キャリー${Math.round(zoneLo - 10)}y前後の番手で刻むのが堅実。`);
+      if (water) tee(`ティーショットの落下地点（${Math.round(water.alongY)}y付近・${side(water.latY)}）に池。ドライバーにこだわらず手前に刻む選択も。`);
+      if (left && !right) tee(`落下地点の左にハザード。フェアウェイ右サイドを狙うと安全。`);
+      else if (right && !left) tee(`落下地点の右にハザード。フェアウェイ左サイドを狙うと安全。`);
+      else if (left && right) tee(`落下地点は両サイドにハザードがあって狭い。キャリー${Math.round(zoneLo - 10)}y前後の番手で刻むのが堅実。`);
       const first = danger[0];
       const carryOver = first.alongY + m2y(first.size);
-      if (first.alongY > 0 && carryOver < driver - 5) tips.push(`${first.type === 'water' ? '池' : 'バンカー'}越えはキャリー約${Math.round(carryOver)}y必要。`);
+      if (first.alongY > 0 && carryOver < driver - 5) tee(`${first.type === 'water' ? '池' : 'バンカー'}越えはキャリー約${Math.round(carryOver)}y必要。`);
     } else if (!dl.length) {
-      tips.push('ティーショットの落下地点にハザードは少なめ。思い切ってドライバーでOK。');
+      tee('ティーショットの落下地点にハザードは少なめ。思い切ってドライバーでOK。');
     }
     const dlTurn = dl[0];
     if (dlTurn && dlTurn.at < driver + 10) {
-      tips.push(`${Math.round(dlTurn.at)}yで${dlTurn.dir}に曲がるので、${dlTurn.at < driver - 15 ? `ドライバーだと突き抜ける恐れ。${Math.round(dlTurn.at)}y前後で止まる番手が◎` : `曲がり角の${dlTurn.dir === '左' ? '右' : '左'}サイドへ打つと2打目が見やすい`}。`);
+      tee(`${Math.round(dlTurn.at)}yで${dlTurn.dir}に曲がるので、${dlTurn.at < driver - 15 ? `ドライバーだと突き抜ける恐れ。${Math.round(dlTurn.at)}y前後で止まる番手が◎` : `曲がり角の${dlTurn.dir === '左' ? '右' : '左'}サイドへ打つと2打目が見やすい`}。`);
     }
   }
 
   // par 5 plan
   if (par === 5) {
     const second = sorted.find((c) => !/1W|Driver/i.test(c.name))?.carry || 190;
-    if (L - driver <= second + 10) tips.push(`ナイスショットなら2オンも狙える距離（残り約${Math.round(L - driver)}y）。ただしグリーン周りのハザード次第。`);
-    else if (fav) tips.push(`3打目を得意の${fav.name}（${fav.carry}y）で打てるよう、2打目は残り約${fav.carry}yに置く3オン作戦がおすすめ。`);
+    if (L - driver <= second + 10) tee(`ナイスショットなら2オンも狙える距離（残り約${Math.round(L - driver)}y）。ただしグリーン周りのハザード次第。`);
+    else if (fav) tee(`3打目を得意の${fav.name}（${fav.carry}y）で打てるよう、2打目は残り約${fav.carry}yに置く3オン作戦がおすすめ。`);
   }
 
   // green complex
@@ -103,7 +106,7 @@ export function holeStrategy(hole, features, clubs) {
   }
   if (hz.some((h) => h.type === 'water')) tips.push('池があるホールは「迷ったら大きめ・安全側」。ペナルティ1打は大きい。');
 
-  return { tips, hazards: hz, par, lengthY: L, shape, doglegs: dl };
+  return { tips, teePlan, hazards: hz, par, lengthY: L, shape, doglegs: dl };
 }
 
 /** distances to each hazard from the player (front edge / carry-over) */

@@ -928,10 +928,17 @@ function voiceInfo() {
     const where = Math.abs(along) >= Math.abs(lat) ? (along < 0 ? '手前' : '奥') : lat < 0 ? '左' : '右';
     return { type: x.type, where, front: x.front, carry: x.carry };
   });
+  // laying up: hazards (off the green) around where this club's ball comes down, seen from the player
+  const leaveY = rc?.layup ? rc.club.carry : null;
+  const layupHazards = leaveY == null ? [] : hazardDistancesFrom(o, (strat?.hazards || []).filter((x) => !x.nearGreen), c)
+    .filter((x) => x.carry > leaveY - 25 && x.front < leaveY + 15)
+    .map((x) => { const rel = ((bearing(o, x.hz.c) - br + 540) % 360 - 180); return { type: x.type, side: Math.abs(rel) < 4 ? '正面' : rel < 0 ? '左' : '右', front: x.front, carry: x.carry }; });
+  const onTee = !!h.tee && dist(o, h.tee) < 45;
   const st = gps.state || {};
   const slope = curSlope && ['high', 'mid'].includes(curSlope.conf?.level) ? { pct: curSlope.pct, dir: compass(curSlope.downBearing), level: curSlope.conf.level } : null;
   return {
-    ...base, preview: o !== me, atTee: !!h.tee && dist(o, h.tee) < 45, estimated: h.source === 'est',
+    ...base, preview: o !== me, atTee: onTee, estimated: h.source === 'est',
+    teePlan: onTee && h.par >= 4 ? strat?.teePlan || [] : [], layupHazards,
     gpsPoor: o === me && (gps.isStale(Date.now()) || ['poor', 'wait'].includes(st.mode) || (meAcc ?? 0) > 15),
     center: g.center, front: g.front, back: g.back, pin: pin ? m2y(dist(o, pin)) : null,
     playsLike: pl.yards, club: rc?.club, alt: rc?.alt, layup: !!rc?.layup, leave: rc ? pl.yards - rc.club.carry : 0,
@@ -1007,10 +1014,12 @@ function undoEasy() {
 }
 // during a round: the green registers itself when the player stands on a mapped green; the round moves on after the
 // score is in and the player walks off the green
-let greenDwell = null, advancedFrom = null;
+let greenDwell = null, advancedFrom = null, autoSpoken = null;
 function easyOnFix(acc) {
   if (!roundActive() || !me) return;
   const h = curHole(); if (!h) return;
+  // hands-free: the caddie speaks once per hole when the player reaches its tee
+  if (state.settings.autoVoice && h.tee && h.center && autoSpoken !== h.key && dist(me, h.tee) < 25 && (acc ?? 99) < 20 && !speaking()) { autoSpoken = h.key; voiceCaddie(); }
   if (!h.center && features?.greens?.length) {
     const r = dwellOnGreen(greenDwell, me, Date.now(), features.greens, { acc });
     greenDwell = r.st;

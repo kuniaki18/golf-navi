@@ -95,6 +95,8 @@ function initSettings() {
   bind('setRakutenId', 'rakutenId'); bind('setRakutenKey', 'rakutenKey'); bind('setRakutenAff', 'rakutenAff');
   $('#setSun').checked = !!s.sun;
   $('#setSun').onchange = () => setSun($('#setSun').checked);
+  $('#setAutoVoice').checked = !!s.autoVoice;
+  $('#setAutoVoice').onchange = () => { s.autoVoice = $('#setAutoVoice').checked; save('settings'); };
   $('#setWake').checked = s.wake !== false;
   $('#setWake').onchange = () => { s.wake = $('#setWake').checked; save('settings'); wake(state.ui.tab === 'navi'); };
   $('#setShareMaps').checked = s.shareMaps !== false;

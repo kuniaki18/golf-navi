@@ -27,6 +27,11 @@ export function clubSpeech(name) {
  * }
  * @returns {string[]} sentences
  */
+/** a strategy tip as it should be spoken: "230y" → "230ヤード", marks read aloud */
+export function spokenTip(t) {
+  return String(t || '').replace(/(\d+)y/g, '$1ヤード').replace(/◎/g, 'おすすめ').replace(/（/g, '、').replace(/）/g, '、').replace(/、([。、])/g, '$1');
+}
+
 export function caddieScript(d) {
   const u = d.unit === 'm' ? 'メートル' : 'ヤード';
   const n = (yards) => Math.round(d.unit === 'm' ? y2m(yards) : yards);
@@ -64,6 +69,22 @@ export function caddieScript(d) {
     }
   }
   if (d.windKnown && Math.abs(d.cross) >= 2) s.push(`横風なので、${d.cross > 0 ? '左' : '右'}目から風に乗せましょう。`);
+
+  // on the tee of a par 4 / 5: the tee-shot plan (landing-zone hazards, which side to aim, doglegs, the par-5 plan)
+  const plan = (d.teePlan || []).map(spokenTip).filter(Boolean);
+  if (plan.length) s.push(`ティーショットの作戦。${plan.join('')}`);
+  // laying up from the fairway: hazards around where this shot comes down
+  else if (d.layup && d.layupHazards?.length) {
+    for (const x of d.layupHazards.slice(0, 2)) {
+      const t = x.type === 'water' ? '池' : 'バンカー';
+      s.push(`落とし所の${x.side === '正面' ? '正面' : x.side + '側'}に${t}。手前まで${n(x.front)}、越えるまで${n(x.carry)}${u}。`);
+    }
+    const sides = new Set(d.layupHazards.map((x) => x.side));
+    const safe = ['左', '右'].find((k) => !sides.has(k));
+    if (safe && sides.size === 1 && !sides.has('正面')) s.push(`${safe}サイドへ運びましょう。`);
+  }
+  // the green is read on the approach; on the tee of a long hole it would only make the message long
+  if (plan.length && d.layup) return s;
 
   // attacking the green
   const hz = d.greenHazards || [];
