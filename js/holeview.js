@@ -1,6 +1,7 @@
 // Rotated hole view: satellite tiles drawn on a canvas with the tee at the bottom and the green at the top,
 // distance arcs, hazard carries, a draggable target and a green close-up for setting today's pin.
 import { dist, bearing, m2y, y2m } from './util.js';
+import { drawHoleArt } from './holeart.js';
 
 // aerial imagery: 国土地理院 seamless photo (free incl. commercial use with credit) or Esri World Imagery
 export const IMAGERY = {
@@ -29,6 +30,8 @@ export class HoleView {
   }
   set(data) { this.d = { ...this.d, ...data }; this.render(); }
   setMode(m) { this.mode = m; this.zoomMul = 1; this.pan = { x: 0, y: 0 }; this.render(); }
+  /** course-guide style illustration instead of the aerial photo */
+  setArt(on) { this.art = !!on; this.render(); }
   resetView() { this.stopFly(); this.zoomMul = 1; this.pan = { x: 0, y: 0 }; this.render(); }
 
   /** flyover: glide from the tee along the hole line to the green, zoomed in, then back to the whole hole */
@@ -74,7 +77,8 @@ export class HoleView {
     if (!h) return null;
     const green = green0;
     const origin = this._origin();
-    const from = h.tee || origin || green;
+    // a layout drawing always runs tee (bottom) → green (top); the photo view turns with the player
+    const from = this.art ? (h.tee || h.line?.[0] || origin || green) : (h.tee || origin || green);
     const brg = from === green ? 0 : bearing(from, green);
     const a = -brg * rad;
     let pois;
@@ -133,7 +137,8 @@ export class HoleView {
     const f = this._frame();
     this.f = f;
     if (!f) { ctx.fillStyle = '#cfe3d4'; ctx.font = '14px system-ui'; ctx.textAlign = 'center'; ctx.fillText(this.d?.emptyText || 'グリーン位置が未登録です', W / 2, H / 2); return; }
-    if (this.useTiles) this._tiles(f, dpr); else this._tilesLoaded = false;
+    const art = this.art && !f.empty;
+    if (this.useTiles && !art) this._tiles(f, dpr); else this._tilesLoaded = false;
     if (f.empty) {
       const S0 = (p) => this._toScreen(f, p);
       // registering a hole on the aerial photo: mapped greens are outlined (tap one), and once the tee is set a ring
@@ -164,9 +169,10 @@ export class HoleView {
     const fmt = (m) => Math.round(unit === 'm' ? m : m2y(m));
     const satOk = this._tilesLoaded;
 
-    // vector layers
+    // vector layers (the illustration paints its own)
     const polyPath = (pts) => { ctx.beginPath(); pts.forEach((p, i) => { const q = S(p); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }); ctx.closePath(); };
-    const near = (arr) => (arr || []).filter((x) => x.c && dist(x.c, f.green) < 700);
+    const artInfo = art ? drawHoleArt(ctx, f, S, d) : null;
+    const near = (arr) => (art ? [] : (arr || []).filter((x) => x.c && dist(x.c, f.green) < 700));
     for (const fw of near(d.features?.fairways)) { polyPath(fw.pts); ctx.fillStyle = satOk ? 'rgba(120,200,110,.10)' : 'rgba(70,140,70,.8)'; ctx.fill(); }
     for (const w of near(d.features?.water)) { polyPath(w.pts); ctx.fillStyle = satOk ? 'rgba(60,150,255,.25)' : 'rgba(40,110,200,.9)'; ctx.fill(); ctx.strokeStyle = 'rgba(120,190,255,.9)'; ctx.lineWidth = 1.5; ctx.stroke(); }
     for (const b of near(d.features?.bunkers)) { polyPath(b.pts); ctx.fillStyle = satOk ? 'rgba(240,220,160,.22)' : 'rgba(230,210,150,.95)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,236,180,.9)'; ctx.lineWidth = 1.2; ctx.stroke(); }
@@ -174,7 +180,7 @@ export class HoleView {
     for (const g of near(d.features?.greens)) { polyPath(g.pts); ctx.fillStyle = satOk ? (g === h.green ? 'rgba(150,255,150,.18)' : 'rgba(150,255,150,.06)') : 'rgba(110,200,110,.95)'; ctx.fill(); ctx.strokeStyle = g === h.green ? 'rgba(220,255,220,.95)' : 'rgba(200,255,200,.4)'; ctx.lineWidth = g === h.green ? 2 : 1; ctx.stroke(); }
 
     // hole center line
-    if (h.line?.length >= 2 && this.mode === 'hole') {
+    if (h.line?.length >= 2 && this.mode === 'hole' && !art) {
       ctx.setLineDash([6, 6]); ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.5;
       ctx.beginPath(); h.line.forEach((p, i) => { const q = S(p); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }); ctx.stroke(); ctx.setLineDash([]);
     }
@@ -324,6 +330,11 @@ export class HoleView {
     // tee marker when player is elsewhere
     if (h.tee && this.mode === 'hole' && (!d.me || dist(d.me, h.tee) > 30)) {
       const t = S(h.tee); ctx.fillStyle = '#fff'; ctx.fillRect(t.x - 4, t.y - 4, 8, 8);
+    }
+    // illustration note: it is drawn from the map data, and parts may be estimated
+    if (art && this.interactive) {
+      ctx.font = '600 11px system-ui';
+      tag(ctx, W / 2, H - 14, artInfo?.estimated ? 'イラスト（地図データから作図・フェアウェイ/グリーン形状は目安）' : 'イラスト（地図データから作図）', 'rgba(0,0,0,.55)', '#fff');
     }
     // compass hint: north arrow
     ctx.save(); ctx.translate(W - 22, H - 22); ctx.rotate(f.a); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.arc(0, 0, 13, 0, 7); ctx.fill();

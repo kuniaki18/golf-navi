@@ -144,6 +144,11 @@ export function initNavi() {
     if (hv.flyover({ ms: 7000, onEnd: () => flyBtn.classList.remove('on') })) flyBtn.classList.add('on');
     else toast('このホールはティーとグリーンの位置が未登録のため、フライオーバーできません');
   };
+  // layout illustration (course-guide style) instead of the aerial photo; remembered
+  const artBtn = $('#btnArt');
+  const applyArt = () => { hv.setArt(!!state.settings.holeArt); artBtn.classList.toggle('on', !!state.settings.holeArt); };
+  artBtn.onclick = () => { state.settings.holeArt = !state.settings.holeArt; save('settings'); applyArt(); if (view !== 'hole' && view !== 'green') setView('hole'); toast(state.settings.holeArt ? 'レイアウト図で表示（GPS・距離はそのまま）' : '航空写真で表示'); };
+  applyArt();
   $('#btnRenumber').onclick = openRenumber;
   $('#rnClose').onclick = () => ($('#renumberPanel').hidden = true);
   $('#rnSave').onclick = applyRenumber;
