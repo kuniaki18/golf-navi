@@ -31,7 +31,7 @@ export function caddieScript(d) {
   const u = d.unit === 'm' ? 'メートル' : 'ヤード';
   const n = (yards) => Math.round(d.unit === 'm' ? y2m(yards) : yards);
   const s = [];
-  if (d.holeNo) s.push(`${d.holeNo}番${d.par ? `、パー${d.par}` : ''}。`);
+  if (d.holeNo) s.push(`${d.holeName || `${d.holeNo}番`}${d.par ? `、パー${d.par}` : ''}。`);
   if (d.preview) s.push(d.estimated ? '推定したティーからの距離です。' : 'ティーからの距離です。');
   else if (d.gpsPoor) s.push('GPSの精度が低いので、距離は目安です。');
   if (!Number.isFinite(d.center)) { s.push('グリーンの位置が分からないため、距離を出せません。'); return s; }

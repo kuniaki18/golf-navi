@@ -23,8 +23,9 @@ export function initScore(onSaved) {
   };
   $('#roundCourse').oninput = () => { state.current.course = $('#roundCourse').value; save('round'); };
   $('#roundDate').oninput = () => { state.current.date = $('#roundDate').value; save('round'); };
-  $('#scPrev').onclick = () => { cur = (cur + 17) % 18; render(); };
-  $('#scNext').onclick = () => { cur = (cur + 1) % 18; render(); };
+  const holesInRound = () => (state.current.plan && !state.current.plan.back ? 9 : 18);
+  $('#scPrev').onclick = () => { const n = holesInRound(); cur = (cur + n - 1) % n; render(); };
+  $('#scNext').onclick = () => { const n = holesInRound(); cur = (cur + 1) % n; render(); };
   $('#scPar').onclick = (e) => { const v = e.target.dataset.v; if (!v) return; hole().par = Number(v); save('round'); render(); };
   $('#scFw').onclick = (e) => { const v = e.target.dataset.v; if (!v) return; hole().fw = hole().fw === v ? null : v; save('round'); render(); };
   $('#scSand').onclick = (e) => { const v = e.target.dataset.v; if (v == null) return; hole().sand = Number(v); save('round'); render(); };
@@ -61,7 +62,7 @@ export function initScore(onSaved) {
   initPlayers();
   window.addEventListener('round-changed', () => render());
   window.addEventListener('navi-hole', (e) => {
-    const no = e.detail.no;
+    const no = e.detail.idx != null ? e.detail.idx + 1 : e.detail.no; // planned round: the column in playing order
     if (no >= 1 && no <= 18) {
       cur = no - 1;
       if (e.detail.par && hole().strokes == null) { hole().par = e.detail.par; save('round'); }
@@ -69,6 +70,25 @@ export function initScore(onSaved) {
     }
   });
   render();
+}
+
+/**
+ * start a planned round (プレー開始). A previous round with scores that was not saved goes to the history first.
+ * @returns {boolean} whether an unsaved round was kept in the history
+ */
+export function beginRound({ plan, pars, players = [] }) {
+  let kept = false;
+  const prev = state.current;
+  if (prev && prev.holes.some((h) => h.strokes) && !prev.saved) {
+    prev.saved = true; state.rounds.unshift(JSON.parse(JSON.stringify(prev)));
+    state.rounds.sort((a, b) => (a.date < b.date ? 1 : -1)); save('rounds'); kept = true;
+  }
+  const r = newRound();
+  r.plan = plan; r.started = Date.now();
+  r.holes.forEach((h, i) => (h.par = pars[i] || 4));
+  if (players.length) r.players = players.map((name) => ({ id: uid(), name, holes: Array(18).fill(null), total: null }));
+  state.current = r; cur = 0; save('round'); render(); window.dispatchEvent(new Event('round-changed'));
+  return kept;
 }
 
 export function syncCourse() {
@@ -100,7 +120,9 @@ function cls(h) {
 function render() {
   const r = state.current, h = hole();
   $('#roundCourse').value = r.course; $('#roundDate').value = r.date;
-  $('#scHole').textContent = cur + 1;
+  const nine = r.plan?.[cur < 9 ? 'front' : 'back'];
+  $('#scHole').textContent = nine ? `${(nine.sc != null ? 1 : nine.from) + (cur % 9)}` : cur + 1;
+  $('#scNine').textContent = nine ? nine.short : '';
   const t = total(r);
   $('#scToPar').textContent = t.played ? `${t.strokes}（${fmtPar(t.strokes - t.par)}）· ${t.played}H` : '未入力';
   $$('#scPar button').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === h.par));
@@ -128,7 +150,10 @@ function renderTable(r) {
   const half = (a, b, label) => {
     const hs = r.holes.slice(a, b);
     const t = total(r, a, b);
-    return `<tr><th>${label}</th>${hs.map((_, i) => `<th>${a + i + 1}</th>`).join('')}<th>計</th></tr>
+    const nine = r.plan?.[a ? 'back' : 'front'];
+    if (r.plan && !nine) return '';
+    const head = nine ? esc(nine.short) : label;
+    return `<tr><th>${head}</th>${hs.map((_, i) => `<th>${nine ? (nine.sc != null ? 1 : nine.from) + i : a + i + 1}</th>`).join('')}<th>計</th></tr>
       <tr><th>PAR</th>${hs.map((h) => `<td>${h.par}</td>`).join('')}<td>${t.parAll}</td></tr>
       <tr><th>打数</th>${hs.map((h, i) => `<td data-h="${a + i}" class="${cls(h)} ${a + i === cur ? 'cur' : ''}">${h.strokes ?? ''}</td>`).join('')}<td><b>${t.strokes || ''}</b></td></tr>
       <tr><th>パット</th>${hs.map((h, i) => `<td data-h="${a + i}">${h.putts ?? ''}</td>`).join('')}<td>${t.putts || ''}</td></tr>`;

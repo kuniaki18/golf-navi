@@ -17,7 +17,8 @@ function doglegs(line) {
 
 function greenShape(hole) {
   if (!hole.green?.pts?.length) return null;
-  const approachFrom = hole.line[Math.max(0, hole.line.length - 2)];
+  const approachFrom = hole.line?.[Math.max(0, hole.line.length - 2)] || hole.tee;
+  if (!approachFrom || !hole.center) return null; // green known but no tee / line yet
   const b = (bearing(approachFrom, hole.center) * Math.PI) / 180;
   const ux = Math.sin(b), uy = Math.cos(b);
   let minA = Infinity, maxA = -Infinity, minL = Infinity, maxL = -Infinity;

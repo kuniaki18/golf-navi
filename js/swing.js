@@ -14,7 +14,9 @@ let frames = []; // [{t, lm:[{x,y,v}]}] (x,y in canvas px)
 let result = null;
 let cv, ctx, vid;
 let raf = 0;
-let busy = false; // while analysing, the stage shows only the analysis preview (no redraw on every seek)
+let busy = false;
+// check lines drawn by the player (stage pixels): { t: 'line'|'circle', a: {x,y}, b: {x,y} }
+let marks = [], drawMode = '', drag = null; // while analysing, the stage shows only the analysis preview (no redraw on every seek)
 const EDGES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28], [27, 31], [28, 32]];
 
 export function initSwing() {
@@ -32,6 +34,7 @@ export function initSwing() {
   $('#swHistory').onclick = (e) => { const b = e.target.closest('[data-del]'); if (!b) return; state.swings = (state.swings || []).filter((s) => s.id !== b.dataset.del); save('swing'); renderHistory(); };
   for (const id of ['swView', 'swHand']) { $('#' + id).value = state.ui[id] || $('#' + id).value; $('#' + id).onchange = () => { state.ui[id] = $('#' + id).value; save('ui'); }; }
   vid.addEventListener('seeked', draw);
+  initDrawing();
   vid.addEventListener('timeupdate', () => { if (vid.duration) { $('#swScrub').value = Math.round((vid.currentTime / vid.duration) * 1000); $('#swTime').textContent = vid.currentTime.toFixed(2); } });
   vid.addEventListener('play', () => ($('#swPlay').textContent = '一時停止'));
   vid.addEventListener('pause', () => ($('#swPlay').textContent = '再生'));
@@ -40,6 +43,7 @@ export function initSwing() {
 
 function load(file) {
   if (!file) return;
+  marks = [];
   if (vid.src) URL.revokeObjectURL(vid.src);
   vid.src = URL.createObjectURL(file); vid.load();
   frames = []; result = null;
@@ -68,11 +72,43 @@ function draw() {
   const f = nearestFrame(vid.currentTime);
   if (result?.ref) drawReference(result.ref);
   if (f) drawSkeleton(f.lm);
+  drawMarks();
   if (result) {
     const ph = result.phases;
     const name = vid.currentTime <= ph.start.t ? 'アドレス' : vid.currentTime <= ph.top.t ? 'バックスイング' : vid.currentTime <= ph.impact.t + 0.03 ? 'ダウンスイング' : 'フォロー';
     label(name, 12, 26);
   }
+}
+function initDrawing() {
+  const setMode = (m) => { drawMode = m; $$('#swDraw button').forEach((b) => b.classList.toggle('on', b.dataset.v === m)); $('#swDrawHint').hidden = !m; cv.style.touchAction = m ? 'none' : ''; cv.style.cursor = m ? 'crosshair' : ''; };
+  setMode('');
+  $('#swDraw').onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) setMode(b.dataset.v); };
+  $('#swDrawUndo').onclick = () => { marks.pop(); draw(); };
+  $('#swDrawClear').onclick = () => { marks = []; draw(); };
+  const at = (e) => { const r = cv.getBoundingClientRect(); return { x: ((e.clientX - r.left) / r.width) * cv.width, y: ((e.clientY - r.top) / r.height) * cv.height }; };
+  cv.addEventListener('pointerdown', (e) => { if (!drawMode) return; e.preventDefault(); cv.setPointerCapture(e.pointerId); const p = at(e); drag = { t: drawMode, a: p, b: p }; });
+  cv.addEventListener('pointermove', (e) => { if (!drag) return; drag.b = at(e); draw(); });
+  const end = () => { if (!drag) return; if (Math.hypot(drag.b.x - drag.a.x, drag.b.y - drag.a.y) > 6) marks.push(drag); drag = null; draw(); };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+}
+function drawMarks() {
+  const all = drag ? [...marks, drag] : marks;
+  if (!all.length) return;
+  ctx.save(); ctx.lineWidth = Math.max(3, cv.width / 220); ctx.lineCap = 'round'; ctx.strokeStyle = '#ff3b6b'; ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 3;
+  for (const m of all) {
+    ctx.beginPath();
+    if (m.t === 'circle') ctx.arc(m.a.x, m.a.y, Math.hypot(m.b.x - m.a.x, m.b.y - m.a.y), 0, 7);
+    else {
+      // extend a straight line across the picture (like a plane / spine line), marking the drawn part
+      const dx = m.b.x - m.a.x, dy = m.b.y - m.a.y, k = (cv.width + cv.height) / Math.max(1, Math.hypot(dx, dy));
+      ctx.save(); ctx.globalAlpha = 0.45; ctx.setLineDash([10, 8]); ctx.beginPath(); ctx.moveTo(m.a.x - dx * k, m.a.y - dy * k); ctx.lineTo(m.a.x + dx * k, m.a.y + dy * k); ctx.stroke(); ctx.restore();
+      ctx.moveTo(m.a.x, m.a.y); ctx.lineTo(m.b.x, m.b.y);
+      const deg = Math.abs(Math.atan2(-dy, dx) * 180 / Math.PI); const shown = deg > 90 ? 180 - deg : deg;
+      ctx.fillStyle = '#fff'; ctx.font = `700 ${Math.round(cv.width / 30)}px system-ui, sans-serif`; ctx.save(); ctx.shadowBlur = 0; ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,.75)"; ctx.strokeText(`${shown.toFixed(0)}°`, m.b.x + 8, m.b.y - 8); ctx.restore(); ctx.fillText(`${shown.toFixed(0)}°`, m.b.x + 8, m.b.y - 8);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 function drawSkeleton(lm, color = '#30d5ff') {
   ctx.save(); ctx.lineWidth = Math.max(2, cv.width / 260); ctx.lineCap = 'round';

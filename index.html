@@ -37,6 +37,7 @@
 <!-- ============ NAVI (GPS) ============ -->
 <div class="inapp-banner" id="inAppBanner" role="alert" hidden></div>
 <section class="tab" id="tab-navi" data-tab="navi">
+  <div class="round-bar" id="roundBar" hidden></div>
   <div class="hole-bar">
     <button class="step" id="holePrev" aria-label="前のホール">‹</button>
     <div class="hole-info">
@@ -64,6 +65,7 @@
       <button class="map-btn" id="btnLocate" title="現在地へ・表示をリセット" aria-label="現在地へ">◎</button>
       <button class="map-btn" id="btnArcs" title="距離の弧を番手で表示">番手</button>
       <button class="map-btn" id="btnPrecise" title="立ち止まって位置を精密に計測">精密</button>
+      <button class="map-btn" id="btnFly" title="フライオーバー（ティーからグリーンまで上空から見る）" aria-label="フライオーバー"><svg viewBox="0 0 24 24"><path d="M3 15c4-1 6-6 9-6s4 3 9 2"/><path d="m17 7 4 4-4 4"/></svg></button>
       <button class="map-btn" id="btnVoiceMap" title="音声キャディ" aria-label="音声キャディ"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg></button>
       <button class="map-btn" id="btnPinClear" title="今日のピン位置を消す" hidden>ピン消</button>
     </div>
@@ -220,7 +222,7 @@
     </div>
     <div class="hole-bar compact">
       <button class="step" id="scPrev">‹</button>
-      <div class="hole-info"><div class="hole-no">HOLE <b id="scHole">1</b></div><div class="hole-meta" id="scToPar">-</div></div>
+      <div class="hole-info"><div class="hole-no"><span class="sc-nine" id="scNine"></span> HOLE <b id="scHole">1</b></div><div class="hole-meta" id="scToPar">-</div></div>
       <button class="step" id="scNext">›</button>
     </div>
     <div class="sc-grid">
@@ -284,6 +286,13 @@
         <select id="swSpeed" aria-label="再生速度"><option value="1">1x</option><option value="0.5">0.5x</option><option value="0.25" selected>0.25x</option></select>
         <button class="btn primary" id="swAnalyze">スイングを解析</button>
       </div>
+      <div class="draw-row" role="group" aria-label="動画に線を引く">
+        <span class="muted">チェック線</span>
+        <div class="seg" id="swDraw"><button data-v="">なし</button><button data-v="line">直線</button><button data-v="circle">円</button></div>
+        <button class="btn small" id="swDrawUndo">1つ戻す</button>
+        <button class="btn small" id="swDrawClear">全部消す</button>
+      </div>
+      <p class="muted draw-hint" id="swDrawHint" hidden>動画の上をなぞって線を引きます。背骨の角度・頭の位置・手元の高さなどの目印に。線はコマを動かしても残ります。</p>
       <progress id="swProgress" max="1" value="0" hidden></progress>
       <div class="muted" id="swStatus"></div>
     </div>
@@ -633,6 +642,16 @@
   <button class="btn small" id="btnInstallClose">閉じる</button>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
+<dialog class="ai-need start-dlg" id="startDlg">
+  <h2>プレー開始</h2>
+  <p class="muted" id="stCourse"></p>
+  <label>前半（アウト）<select id="stFront"></select></label>
+  <label>後半（イン）<select id="stBack"></select></label>
+  <label id="stTeeWrap">ティー<div class="seg" id="stTee"><button data-v="regular" class="on">レギュラー</button><button data-v="back">バック</button></div></label>
+  <label id="stPlayersWrap">同伴者（任意・スペース区切り）<input id="stPlayers" placeholder="例: たろう はなこ" autocomplete="off"></label>
+  <p class="muted" id="stNote"></p>
+  <div class="btn-row"><button class="btn primary" id="stGo">▶ スタート</button><button class="btn" id="stCancel">やめる</button></div>
+</dialog>
 <dialog class="ai-need" id="aiNeedDlg">
   <h2><span data-feature>AI機能</span>を使うには</h2>
   <p>AIの機能は、<b>ご自分のClaude APIキー</b>を設定すると使えます。料金は使った分だけ（1回あたり数円ほど）で、ご自分のAnthropicアカウントにかかります。</p>

@@ -164,3 +164,28 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .voice-help, .inapp-banner { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: color-mix(in srgb, var(--flag) 16%, var(--surface)); border: 1px solid color-mix(in srgb, var(--flag) 45%, var(--line)); border-radius: var(--r); padding: 10px 12px; font-size: .88rem; }
 .voice-help p { margin: 0; flex-basis: 100%; }
 .inapp-banner span { flex: 1; min-width: 200px; }
+
+/* round: プレー開始 */
+.round-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-radius: var(--r); padding: 10px 12px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
+.round-bar.idle .muted { flex: 1; min-width: 150px; font-size: .8rem; }
+.play-btn { min-height: 52px; padding: 0 22px; font-size: 1.1rem; border-radius: 16px; gap: 8px; }
+.play-btn svg { width: 20px; height: 20px; fill: currentColor; stroke: none; }
+.round-bar.live { background: var(--hero); color: #fff; border-color: rgba(255, 255, 255, .08); }
+.round-bar.live .rb-info { flex: 1; min-width: 160px; font-size: .9rem; line-height: 1.35; }
+.round-bar.live .rb-info span { color: #a8d5bb; font-size: .8rem; }
+.round-bar.live .btn { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .2); color: #fff; }
+.rb-dot { width: 10px; height: 10px; border-radius: 50%; background: #4ee08e; box-shadow: 0 0 0 0 rgba(78, 224, 142, .6); animation: rbPulse 1.6s ease-out infinite; flex: none; }
+@keyframes rbPulse { to { box-shadow: 0 0 0 10px rgba(78, 224, 142, 0); } }
+@media (prefers-reduced-motion: reduce) { .rb-dot { animation: none; } }
+.start-dlg { width: min(420px, calc(100vw - 32px)); }
+.start-dlg label { margin-bottom: 10px; }
+.sc-nine { font: 700 .8rem/1 var(--body); color: var(--green); letter-spacing: 0; }
+:root.sun .round-bar.live { background: #002814; }
+
+/* swing check lines */
+.draw-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.draw-row .seg { flex: 1; min-width: 180px; }
+.draw-hint { margin: 0; }
+.map-btn#btnFly svg { width: 22px; height: 22px; stroke: #fff; }
+.map-btn#btnFly.on { background: var(--flag); }
+.map-btn#btnFly.on svg { stroke: #1a1400; }

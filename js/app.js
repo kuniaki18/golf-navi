@@ -1,6 +1,6 @@
 import { $, $$, esc, toast, copyText, shareOrDownload } from './util.js';
 import { state, save, exportBundle, importBundle, DEFAULT_CLUBS } from './store.js';
-import { initNavi, onNaviShown, loadCourse, refreshNavi, fillShotClubs, applyImagery } from './navi.js';
+import { initNavi, onNaviShown, loadCourse, refreshNavi, fillShotClubs, applyImagery, openStartRound } from './navi.js';
 import { openBook } from './coursebook.js';
 import { initSwing } from './swing.js';
 import { initMemory, openMemory } from './memory.js';
@@ -193,7 +193,7 @@ function boot() {
   $('#openSettings').onclick = () => goto('settings');
   initSettings();
   initFeedback();
-  initCourses(async (c, mode) => { courseChip(); syncCourse(); goto(mode === 'book' ? 'book' : 'navi'); if (mode !== 'book') toast(`${state.course.name} を読み込みます`); await loadCourse(false); if (mode === 'book') openBook(); });
+  initCourses(async (c, mode) => { courseChip(); syncCourse(); goto(mode === 'book' ? 'book' : 'navi'); if (mode !== 'book') toast(`${state.course.name} を読み込みます`); await loadCourse(false); if (mode === 'book') openBook(); else if (!(state.current?.plan && !state.current.ended && state.current.courseId === state.course.id)) openStartRound('new'); });
   window.addEventListener('open-book', () => goto('book'));
   $('#btnShareIntel').onclick = () => shareCourseIntel();
   window.addEventListener('course-intel', (e) => { if (e.detail.courseId === state.course?.id) loadCourse(false); toast('仲間から攻略情報が届きました'); });

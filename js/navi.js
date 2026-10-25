@@ -11,6 +11,8 @@ import { analyzeGreen, readPutt, greenCondition } from './greenslope.js';
 import { GpsFilter } from './gpsfilter.js';
 import { greenDistances as greenDist, greenKey } from './geo.js';
 import { submitHole, communityHoles } from './community.js';
+import { ninesOf, defaultPlan, planHoles, planPars, scRow } from './round.js';
+import { beginRound } from './score.js';
 import { caddieScript, speak, canSpeak, speaking, stopSpeaking, browserKind, externalBrowserUrl, speechHelp } from './voice.js';
 
 let map, layers, meMarker, accCircle, overlay, mapTiles;
@@ -94,7 +96,20 @@ export function initNavi() {
     rebuild(); toast(`${greenSideLabel(curHole(), next)}にしました`);
   };
   $('#btnVoice').onclick = voiceCaddie;
+  $('#stGo').onclick = startRound;
+  $('#stCancel').onclick = () => $('#startDlg').close();
+  $('#stTee').onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) $$('#stTee button').forEach((x) => x.classList.toggle('on', x === b)); };
+  window.addEventListener('round-changed', renderRoundBar);
   $('#btnVoiceMap').onclick = voiceCaddie;
+  // flyover (like a 3D hole preview): glide from the tee to the green over the aerial photo
+  const flyBtn = $('#btnFly');
+  hv.onFlyEnd = () => flyBtn.classList.remove('on');
+  flyBtn.onclick = () => {
+    if (hv.flying) { hv.resetView(); flyBtn.classList.remove('on'); return; }
+    if (view !== 'hole') setView('hole');
+    if (hv.flyover({ ms: 7000, onEnd: () => flyBtn.classList.remove('on') })) flyBtn.classList.add('on');
+    else toast('このホールはティーとグリーンの位置が未登録のため、フライオーバーできません');
+  };
   $('#btnRenumber').onclick = openRenumber;
   $('#rnClose').onclick = () => ($('#renumberPanel').hidden = true);
   $('#rnSave').onclick = applyRenumber;
@@ -252,7 +267,7 @@ function autoHole() {
   if (next?.tee && dist(me, next.tee) < 35 && (!cur.center || dist(me, cur.center) > 25)) return gotoHole(holeIdx + 1, true);
   // walking onto another course of a 27/36-hole club: switch course when standing on its tee
   const nearAll = nearestHole(allHoles, me);
-  if (nearAll && (nearAll.set || 0) !== activeSet() && nearAll.tee && dist(me, nearAll.tee) < 30) {
+  if (!roundActive() && nearAll && (nearAll.set || 0) !== activeSet() && nearAll.tee && dist(me, nearAll.tee) < 30) {
     setSet(nearAll.set || 0); state.ui.holeKey = nearAll.key; rebuild(); toast(`${setLabel(activeSet())}に切り替えました`); return;
   }
   const near = nearestHole(holes, me);
@@ -364,16 +379,21 @@ function rebuild(first) {
   }
   // official scorecard: par and yardage by course / hole number
   // only for holes whose number is known (mapped, registered or confirmed with 番号修正) — never for an estimated number
-  for (const h of allHoles) { if (h.source === 'est') continue; const sc = scorecard?.courses?.[h.set || 0]?.holes?.[h.no - 1]; if (sc) { h.par = sc.par; h.parEst = false; h.officialY = sc.yd; } }
+  const back = roundActive() && state.current.plan.tee === 'back';
+  for (const h of allHoles) { if (h.source === 'est') continue; const sc = scorecard?.courses?.[h.set || 0]?.holes?.[h.no - 1]; if (sc) { h.par = sc.par; h.parEst = false; h.officialY = back ? sc.back || sc.yd : sc.yd; } }
   const sets = [...new Set(allHoles.map((h) => h.set || 0))].sort((a, b) => a - b);
   if (!sets.includes(activeSet())) setSet(0, false);
-  holes = allHoles.filter((h) => (h.set || 0) === activeSet());
+  // during a started round the holes follow the plan (front nine → back nine); otherwise one course at a time
+  holes = roundActive() ? planHoles(allHoles, state.current.plan) : allHoles.filter((h) => (h.set || 0) === activeSet());
+  // official course of a 27-hole club played on map holes: par / yardage from that course's scorecard row
+  for (const h of holes) { if (h.scIdx == null) continue; const sc = scRow(h, scorecard); if (sc) { h.par = sc.par; h.parEst = false; h.officialY = back ? sc.back || sc.yd : sc.yd; } }
   holeIdx = Math.max(0, holes.findIndex((h) => h.key === keep));
   const btn = $('#setBtn');
-  btn.hidden = sets.length < 2;
+  btn.hidden = sets.length < 2 || roundActive();
   btn.textContent = courseName(activeSet());
   btn.onclick = () => { setSet((activeSet() + 1) % sets.length); state.ui.holeKey = null; rebuild(); toast(`${courseName(activeSet())}に切り替えました`); };
   renderCourseLayer();
+  renderRoundBar();
   gotoHole(holeIdx, first || true);
 }
 function setSet(i, persist = true) {
@@ -404,9 +424,9 @@ export function gotoHole(i, fit) {
   const h = curHole();
   state.ui.holeKey = h.key; save('hole');
   target = null;
-  $('#holeNo').textContent = h.no > 100 ? '?' : h.no;
+  $('#holeNo').textContent = h.no > 100 ? '?' : h.dispNo ?? h.no;
   const lenY = h.lengthM ? m2y(h.lengthM) : null;
-  $('#holeMeta').textContent = `PAR ${h.par ?? '-'}${h.parEst ? '（推定）' : ''} · ${h.officialY ? `公式 ${fmt(h.officialY)}${ul()}` : lenY ? fmt(lenY) + ul() : '距離データなし'}${h.hcp ? ' · HDCP ' + h.hcp : ''}`;
+  $('#holeMeta').textContent = `${h.nineName ? h.nineName + ' · ' : ''}PAR ${h.par ?? '-'}${h.parEst ? '（推定）' : ''} · ${h.officialY ? `公式 ${fmt(h.officialY)}${ul()}` : lenY ? fmt(lenY) + ul() : '距離データなし'}${h.hcp ? ' · HDCP ' + h.hcp : ''}`;
   $('#btnRenumber').hidden = !['est', 'user', 'community', 'learned'].includes(h.source);
   const gb = $('#btnGreenAlt');
   gb.hidden = !h.greenOptions;
@@ -423,7 +443,8 @@ export function gotoHole(i, fit) {
   curSlope = null; if (view === 'green') readGreen(true);
   if (fit) { hv.resetView(); fitMap(); }
   render();
-  window.dispatchEvent(new CustomEvent('navi-hole', { detail: { no: h.no, par: h.parEst ? null : h.par } }));
+  window.dispatchEvent(new CustomEvent('navi-hole', { detail: { no: h.no, idx: h.roundIdx, par: h.parEst ? null : h.par } }));
+  renderRoundBar();
 }
 
 function renderStrategy() {
@@ -463,6 +484,7 @@ function render() {
     $('#clubDetail').textContent = !state.course ? 'コースを選ぶと距離と番手が出ます' : !c ? 'このホールのグリーン位置が未登録です' : '現在地を取得中…（地図タブ→「現在地を指定」で手動指定も可）';
     $('#hazardList').innerHTML = '';
     $('#targetLine').hidden = true;
+    $('#adjBreak').textContent = ''; // no stale corrections from the previous hole
     return;
   }
   const g = greenDist(o, h.green, h.center || c);
@@ -485,7 +507,7 @@ function render() {
 /** distances are measured from the player on the hole, otherwise from the tee (preview while browsing) */
 function originFor(h, c) {
   if (me && c && dist(me, c) <= 800) return me;
-  return h?.tee || (me && c ? me : null);
+  return h?.tee || (me && c && dist(me, c) < 3000 ? me : null); // never measure from kilometres away
 }
 
 function renderTarget(c) {
@@ -545,11 +567,89 @@ async function refreshWind() {
 }
 setInterval(() => { if (state.course && Date.now() - wxAt > 15 * 60e3 && document.visibilityState === 'visible') refreshWind(); }, 60e3);
 
+// ---------------- round: プレー開始 ----------------
+function roundActive() { const r = state.current; return !!(r?.plan && !r.ended && cid() && r.courseId === cid()); }
+let startMode = 'new';
+export function openStartRound(mode = 'new') {
+  if (!state.course) { toast('先にコースを選んでください'); return; }
+  startMode = mode;
+  const nines = ninesOf(allHoles, courseName, scorecard);
+  const plan = mode === 'edit' && roundActive() ? state.current.plan : defaultPlan(nines);
+  const opt = (n, sel) => `<option value="${n.id}" ${sel?.id === n.id ? 'selected' : ''}>${esc(n.name)}${n.mapped < 9 ? `（地図データ ${n.mapped}/9ホール）` : ''}</option>`;
+  $('#stCourse').textContent = state.course.name;
+  $('#stFront').innerHTML = nines.map((n) => opt(n, plan.front)).join('');
+  $('#stBack').innerHTML = nines.map((n) => opt(n, plan.back)).join('') + `<option value="" ${plan.back ? '' : 'selected'}>なし（9ホールのみ）</option>`;
+  const hasBack = scorecard?.courses?.some((c) => c.holes?.some((h) => h.back));
+  $('#stTeeWrap').hidden = !hasBack;
+  $$('#stTee button').forEach((b) => b.classList.toggle('on', b.dataset.v === (plan.tee || 'regular')));
+  $('#stPlayers').value = '';
+  $('#stPlayersWrap').hidden = mode === 'edit';
+  $('#stGo').textContent = mode === 'edit' ? 'この内容に変更' : '▶ スタート';
+  $('#stNote').textContent = mode === 'edit' ? '入力済みのスコアはそのまま残ります。' : '入力途中で保存していないラウンドは、自動で履歴に保存されます。';
+  $('#startDlg').showModal();
+}
+function startRound() {
+  const nines = ninesOf(allHoles, courseName, scorecard);
+  const front = nines.find((n) => n.id === $('#stFront').value);
+  const back = nines.find((n) => n.id === $('#stBack').value) || null;
+  if (!front) return;
+  if (back && back.id === front.id) { toast('前半と後半に同じコースが選ばれています'); return; }
+  const tee = $('#stTee button.on')?.dataset.v || 'regular';
+  const plan = { front, back, tee };
+  const ph = planHoles(allHoles, plan);
+  const pars = planPars(plan, ph, scorecard);
+  $('#startDlg').close();
+  if (startMode === 'edit' && roundActive()) {
+    const r = state.current; r.plan = plan;
+    r.holes.forEach((h, i) => { if (h.strokes == null) h.par = pars[i] || h.par; });
+    save('round'); window.dispatchEvent(new Event('round-changed'));
+    toast('ラウンドの内容を変更しました');
+  } else {
+    const players = $('#stPlayers').value.split(/[\s、,]+/).map((x) => x.trim()).filter(Boolean).slice(0, 7);
+    const kept = beginRound({ plan, pars, players });
+    toast(`プレー開始！ ${front.short}${back ? ' → ' + back.short : ''}${kept ? '（前のラウンドは履歴に保存しました）' : ''}`, 3500);
+  }
+  state.ui.holeKey = ph[0]?.key; save('ui');
+  rebuild(); hv.resetView();
+}
+let endArmed = 0;
+function endRound() {
+  if (Date.now() - endArmed > 3500) {
+    endArmed = Date.now(); $('#btnRoundEnd').textContent = 'もう一度押して終了';
+    setTimeout(() => { const b = $('#btnRoundEnd'); if (b) b.textContent = '終了'; }, 3500);
+    return;
+  }
+  const r = state.current;
+  if (r.holes.some((h) => h.strokes) && !r.saved) $('#btnSaveRound').click();
+  r.ended = true; save('round');
+  rebuild();
+  window.dispatchEvent(new CustomEvent('goto-tab', { detail: 'score' }));
+}
+function renderRoundBar() {
+  const bar = $('#roundBar'); if (!bar) return;
+  if (!state.course) { bar.hidden = true; return; }
+  bar.hidden = false;
+  if (!roundActive()) {
+    bar.className = 'round-bar idle';
+    bar.innerHTML = `<button class="btn primary play-btn" id="btnPlay"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8Z"/></svg>プレー開始</button><span class="muted">回るコース（前半・後半）とティーを選んでスタート</span>`;
+    $('#btnPlay').onclick = () => openStartRound('new');
+    return;
+  }
+  const r = state.current, p = r.plan;
+  const played = r.holes.filter((h) => h.strokes);
+  const tot = played.reduce((a, h) => a + h.strokes, 0), toPar = tot - played.reduce((a, h) => a + h.par, 0);
+  const n = p.back ? 18 : 9, at = (curHole()?.roundIdx ?? 0) + 1;
+  bar.className = 'round-bar live';
+  bar.innerHTML = `<span class="rb-dot" aria-hidden="true"></span><div class="rb-info"><b>プレー中</b> ${esc(p.front.short)}${p.back ? ' → ' + esc(p.back.short) : ''}${p.tee === 'back' ? ' · バックティー' : ''}<br><span>${at}/${n}ホール目${played.length ? ` · ${tot}（${toPar === 0 ? 'E' : toPar > 0 ? '+' + toPar : toPar}）` : ''}</span></div><button class="btn small" id="btnRoundEdit">変更</button><button class="btn small" id="btnRoundEnd">終了</button>`;
+  $('#btnRoundEdit').onclick = () => openStartRound('edit');
+  $('#btnRoundEnd').onclick = endRound;
+}
+
 // ---------------- voice caddie ----------------
 /** everything the caddie says, from the same numbers the screen shows */
 function voiceInfo() {
   const h = curHole(); const c = holeCenter(h); const o = originFor(h, c);
-  const base = { unit: unit(), holeNo: h && h.no <= 100 ? h.no : null, par: h && !h.parEst ? h.par : null };
+  const base = { unit: unit(), holeNo: h && h.no <= 100 ? h.no : null, holeName: h?.nineName ? `${h.nineName}の${h.dispNo ?? h.no}番` : null, par: h && !h.parEst ? h.par : null };
   if (!h || !c || !o) return { ...base, center: NaN };
   const g = greenDist(o, h.green, h.center || c);
   const pin = cid() ? todayPins()[h.key] : null;
@@ -743,7 +843,8 @@ export function applyImagery() { setImagery(state.settings.imagery || 'gsi'); if
 function scoreHole() {
   const h = curHole(); const n = h?.no;
   if (!state.current || !n || n > 18) return null;
-  return { n, sh: state.current.holes[n - 1], par: h.parEst ? null : h.par };
+  const i = h.roundIdx ?? n - 1; // planned round: the scorecard column in playing order
+  return { n, sh: state.current.holes[i], par: h.parEst ? null : h.par };
 }
 function initQuickScore() {
   $('#quickScore').addEventListener('click', (e) => {

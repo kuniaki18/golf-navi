@@ -29,7 +29,34 @@ export class HoleView {
   }
   set(data) { this.d = { ...this.d, ...data }; this.render(); }
   setMode(m) { this.mode = m; this.zoomMul = 1; this.pan = { x: 0, y: 0 }; this.render(); }
-  resetView() { this.zoomMul = 1; this.pan = { x: 0, y: 0 }; this.render(); }
+  resetView() { this.stopFly(); this.zoomMul = 1; this.pan = { x: 0, y: 0 }; this.render(); }
+
+  /** flyover: glide from the tee along the hole line to the green, zoomed in, then back to the whole hole */
+  flyover({ ms = 7000, onEnd } = {}) {
+    const h = this.d?.hole;
+    const path = h?.line?.length >= 2 ? h.line : h?.tee && h?.center ? [h.tee, h.center] : null;
+    if (!path) return false;
+    this.stopFly(); this.mode = 'hole';
+    // cumulative length so the speed is even along a dogleg
+    const seg = path.slice(1).map((p, i) => dist(path[i], p)), total = seg.reduce((a, b) => a + b, 0) || 1;
+    const pointAt = (u) => { let d = u * total; for (let i = 0; i < seg.length; i++) { if (d <= seg[i] || i === seg.length - 1) { const k = seg[i] ? Math.min(1, d / seg[i]) : 1; return { lat: path[i].lat + (path[i + 1].lat - path[i].lat) * k, lon: path[i].lon + (path[i + 1].lon - path[i].lon) * k }; } d -= seg[i]; } return path[path.length - 1]; };
+    const t0 = performance.now(), ease = (x) => (x < 0.5 ? 2 * x * x : 1 - (-2 * x + 2) ** 2 / 2);
+    const step = (now) => {
+      const u = Math.min(1, (now - t0) / ms), e = ease(u);
+      // zoom in for the walk, open up again at the green
+      this.zoomMul = 1 + 1.8 * Math.sin(Math.PI * Math.min(1, u * 1.15));
+      this.pan = { x: 0, y: 0 };
+      const f = this._frame();
+      if (f) { const p = this._toScreen(f, pointAt(e)); this.pan = { x: f.W / 2 - p.x, y: f.H * 0.58 - p.y }; }
+      this._draw();
+      if (u < 1) this._fly = requestAnimationFrame(step);
+      else { this._fly = 0; this.zoomMul = 1; this.pan = { x: 0, y: 0 }; this.render(); onEnd?.(); }
+    };
+    this._fly = requestAnimationFrame(step);
+    return true;
+  }
+  stopFly() { if (this._fly) { cancelAnimationFrame(this._fly); this._fly = 0; } }
+  get flying() { return !!this._fly; }
 
   // ---------- geometry ----------
   _frame() {
@@ -343,7 +370,7 @@ export class HoleView {
   _gestures() {
     const cv = this.cv; const pts = new Map(); let start = null, moved = false, pinch0 = null;
     cv.style.touchAction = 'none';
-    cv.addEventListener('pointerdown', (e) => { cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 1) { start = { x: e.clientX, y: e.clientY, pan: { ...this.pan } }; moved = false; } if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), z: this.zoomMul }; } });
+    cv.addEventListener('pointerdown', (e) => { if (this._fly) { this.resetView(); this.onFlyEnd?.(); return; } cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 1) { start = { x: e.clientX, y: e.clientY, pan: { ...this.pan } }; moved = false; } if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), z: this.zoomMul }; } });
     cv.addEventListener('pointermove', (e) => {
       if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 2 && pinch0) { const [a, b] = [...pts.values()]; this.zoomMul = Math.max(0.5, Math.min(8, pinch0.z * Math.hypot(a.x - b.x, a.y - b.y) / pinch0.d)); moved = true; this.render(); return; }
