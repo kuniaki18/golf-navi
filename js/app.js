@@ -225,7 +225,15 @@ function boot() {
         const nw = reg.installing;
         nw?.addEventListener('statechange', () => { if (nw.state === 'installed' && navigator.serviceWorker.controller) toast('新しいバージョンがあります。アプリを再起動すると更新されます', 4500); });
       });
+      // look for a new version whenever the app comes back to the front (phones keep PWAs open for days)
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
     }).catch(() => {});
+    // the new version took over: reload once so the new app and data are used — but never in the middle of a round
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded || inRound()) return;
+      reloaded = true; location.reload();
+    });
   }
 }
 

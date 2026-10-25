@@ -1,5 +1,5 @@
 // Offline support: app shell cached, map tiles cached as you browse (so the course map works with weak signal).
-const VERSION = 'v2.17.0';
+const VERSION = 'v2.17.1';
 const SHELL = `shell-${VERSION}`;
 const TILES = 'tiles-v1';
 const FILES = [
@@ -36,6 +36,15 @@ self.addEventListener('fetch', (e) => {
   // live data (APIs, relay, feed): network only / network-first
   if (url.origin !== location.origin && !url.hostname.endsWith('unpkg.com') && !url.hostname.includes('fonts.g')) return;
   if (url.pathname.endsWith('/data/feed.json')) return;
+  // course data (list of courses, holes, scorecards, community maps): network-first so corrections show up at once;
+  // the saved copy is used only without signal
+  if (url.origin === location.origin && url.pathname.includes('/data/')) {
+    e.respondWith(caches.open(SHELL).then(async (c) => {
+      try { const res = await fetch(req, { cache: 'no-cache' }); if (res.ok) c.put(req, res.clone()); return res; }
+      catch { return (await c.match(req, { ignoreSearch: true })) || (await caches.match(req, { ignoreSearch: true })) || Response.error(); }
+    }));
+    return;
+  }
   // app shell: stale-while-revalidate
   e.respondWith(caches.open(SHELL).then(async (c) => {
     const hit = await c.match(req, { ignoreSearch: url.origin === location.origin });
