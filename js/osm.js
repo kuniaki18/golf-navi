@@ -257,6 +257,7 @@ function assignSets(holes) {
   for (let merged = true; merged;) {
     merged = false;
     for (const a of chains) {
+      if (!a.length) continue; // emptied by an earlier merge in this pass
       const end = a[a.length - 1];
       let best = null, bd = 1200;
       for (const b of chains) {

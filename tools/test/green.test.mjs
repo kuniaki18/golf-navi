@@ -71,3 +71,14 @@ test('36-hole club: holes named after their course (East / West) stay on that co
   assert.equal(setOf('West').size, 1);
   assert.notDeepEqual([...setOf('East')], [...setOf('West')]);
 });
+
+test('27-hole club whose pieces merge into one chain: hole sets build without throwing (アジア取手)', async () => {
+  const fs = await import('node:fs');
+  const d = JSON.parse(fs.readFileSync(new URL('../../data/c/osm-way-463446671.json', import.meta.url), 'utf8'));
+  const P = (flat, i) => ({ lat: flat[i], lon: flat[i + 1] });
+  const pts = (flat) => { const o = []; for (let i = 0; i < flat.length; i += 2) o.push(P(flat, i)); return o; };
+  const f = { holes: d.holes.filter((h) => h.g?.length >= 4).map((h) => ({ ref: h.r ? Number(h.r) : null, par: h.p, pts: pts(h.g), distTag: h.d })), greens: [], tees: [], bunkers: [], water: [], fairways: [], pins: [] };
+  const out = buildHoles(f, {});
+  assert.ok(out.length > 0);
+  assert.ok(out.every((h) => Number.isInteger(h.set)));
+});
