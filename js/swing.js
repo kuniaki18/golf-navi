@@ -14,6 +14,7 @@ let frames = []; // [{t, lm:[{x,y,v}]}] (x,y in canvas px)
 let result = null;
 let cv, ctx, vid;
 let raf = 0;
+let busy = false; // while analysing, the stage shows only the analysis preview (no redraw on every seek)
 const EDGES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28], [27, 31], [28, 32]];
 
 export function initSwing() {
@@ -62,7 +63,7 @@ function nearestFrame(t) {
 }
 
 function draw() {
-  if (!cv.width || vid.readyState < 2) return;
+  if (busy || !cv.width || vid.readyState < 2) return;
   ctx.drawImage(vid, 0, 0, cv.width, cv.height);
   const f = nearestFrame(vid.currentTime);
   if (result?.ref) drawReference(result.ref);
@@ -179,12 +180,12 @@ async function analyze() {
   const status = $('#swStatus'); const bar = $('#swProgress');
   try {
     status.textContent = 'AIモデルを準備中…（初回のみ10MB程度ダウンロード）'; bar.hidden = false; bar.value = 0;
-    vid.pause();
+    vid.pause(); busy = true;
     const end = Math.min(vid.duration, 8);
     const fps = 30; // fixed, so results don't depend on how long the clip is
     const n = Math.floor(end * fps);
     const view = $('#swView').value, hand = $('#swHand').value;
-    const show = (label, base) => (k, off, lm) => { bar.value = base + k / 2; status.textContent = `${label} ${Math.round((base + k / 2) * 100)}%`; ctx.drawImage(off, 0, 0, cv.width, cv.height); };
+    const show = (label, base) => (k, off, lm) => { bar.value = base + k / 2; status.textContent = `${label} ${Math.round((base + k / 2) * 100)}%`; ctx.drawImage(vid, 0, 0, cv.width, cv.height); if (lm) drawSkeleton(lm); };
     const tryEval = (fr) => { if (fr.length < 10) return { err: new Error('体を検出できませんでした。明るい場所で、少なくとも頭から腰までが入るように撮影してください') }; try { return { r: evaluate(fr, view, hand) }; } catch (err) { return { err }; } };
 
     resetLandmarker();
@@ -211,11 +212,12 @@ async function analyze() {
     renderResult(result);
     await saveSwing(result);
     status.textContent = '解析が完了しました。再生すると骨格と基準線が表示されます';
+    busy = false;
     await seek(result.phases.start.t); draw();
   } catch (e) {
     status.textContent = e.message || '解析に失敗しました';
     bar.hidden = true;
-  } finally { btn.disabled = false; }
+  } finally { btn.disabled = false; if (busy) { busy = false; draw(); } }
 }
 
 async function captureThumbs(r) {

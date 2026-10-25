@@ -11,6 +11,7 @@ import { analyzeGreen, readPutt, greenCondition } from './greenslope.js';
 import { GpsFilter } from './gpsfilter.js';
 import { greenDistances as greenDist, greenKey } from './geo.js';
 import { submitHole, communityHoles } from './community.js';
+import { caddieScript, speak, canSpeak, speaking, stopSpeaking } from './voice.js';
 
 let map, layers, meMarker, accCircle, overlay, mapTiles;
 let hv = null;
@@ -92,6 +93,8 @@ export function initNavi() {
     state.ui.greenAlt ??= {}; (state.ui.greenAlt[cid()] ??= {})[h.key] = next; save('ui');
     rebuild(); toast(`${greenSideLabel(curHole(), next)}にしました`);
   };
+  $('#btnVoice').onclick = voiceCaddie;
+  $('#btnVoiceMap').onclick = voiceCaddie;
   $('#btnRenumber').onclick = openRenumber;
   $('#rnClose').onclick = () => ($('#renumberPanel').hidden = true);
   $('#rnSave').onclick = applyRenumber;
@@ -541,6 +544,50 @@ async function refreshWind() {
   try { wx = await weather(state.course.lat, state.course.lon); wxAt = Date.now(); render(); } catch {}
 }
 setInterval(() => { if (state.course && Date.now() - wxAt > 15 * 60e3 && document.visibilityState === 'visible') refreshWind(); }, 60e3);
+
+// ---------------- voice caddie ----------------
+/** everything the caddie says, from the same numbers the screen shows */
+function voiceInfo() {
+  const h = curHole(); const c = holeCenter(h); const o = originFor(h, c);
+  const base = { unit: unit(), holeNo: h && h.no <= 100 ? h.no : null, par: h && !h.parEst ? h.par : null };
+  if (!h || !c || !o) return { ...base, center: NaN };
+  const g = greenDist(o, h.green, h.center || c);
+  const pin = cid() ? todayPins()[h.key] : null;
+  const br = bearing(o, c), cond = conditions(br);
+  const pl = playsLike(m2y(dist(o, c)), cond);
+  const rc = recommendClub(state.clubs, pl.yards);
+  const auto = $('#windMode').value === 'auto';
+  // hazards around the green, seen from the player: in front / behind / left / right of the line to the green
+  const toC = dist(o, c);
+  const near = (strat?.hazards || []).filter((x) => x.nearGreen);
+  const greenHazards = hazardDistancesFrom(o, near, c).map((x) => {
+    const d = dist(o, x.hz.c), rel = ((bearing(o, x.hz.c) - br + 540) % 360 - 180) * Math.PI / 180;
+    const lat = d * Math.sin(rel), along = d * Math.cos(rel) - toC;
+    // direction from the green centre, by whichever offset is larger (as the player sees it)
+    const where = Math.abs(along) >= Math.abs(lat) ? (along < 0 ? '手前' : '奥') : lat < 0 ? '左' : '右';
+    return { type: x.type, where, front: x.front, carry: x.carry };
+  });
+  const st = gps.state || {};
+  const slope = curSlope && ['high', 'mid'].includes(curSlope.conf?.level) ? { pct: curSlope.pct, dir: compass(curSlope.downBearing), level: curSlope.conf.level } : null;
+  return {
+    ...base, preview: o !== me, estimated: h.source === 'est',
+    gpsPoor: o === me && (gps.isStale(Date.now()) || ['poor', 'wait'].includes(st.mode) || (meAcc ?? 0) > 15),
+    center: g.center, front: g.front, back: g.back, pin: pin ? m2y(dist(o, pin)) : null,
+    playsLike: pl.yards, club: rc?.club, alt: rc?.alt, layup: !!rc?.layup, leave: rc ? pl.yards - rc.club.carry : 0,
+    windKnown: auto ? !!(wx && Number.isFinite(wx.speed)) : true, head: cond.head || 0, cross: auto ? crossComponent(wx, br) : 0, gust: auto ? wx?.gust : null,
+    elevM: cond.elevM, greenHazards, slope,
+  };
+}
+function voiceCaddie() {
+  const btns = [$('#btnVoice'), $('#btnVoiceMap')];
+  const setOn = (on) => btns.forEach((b) => b.classList.toggle('on', on));
+  if (speaking()) { stopSpeaking(); setOn(false); return; }
+  const lines = caddieScript(voiceInfo());
+  const box = $('#voiceText'); box.hidden = false; box.textContent = lines.join('');
+  if (!canSpeak()) { toast('この端末のブラウザは音声読み上げに対応していません。内容を文字で表示しました', 4000); return; }
+  setOn(true);
+  speak(lines, { rate: Number(state.settings.voiceRate) || 1.05, onEnd: () => setOn(false) });
+}
 
 // ---------------- unmapped holes: nearby greens + mapping ----------------
 let mapping = false;

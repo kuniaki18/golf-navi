@@ -63,6 +63,7 @@
       <button class="map-btn" id="btnLocate" title="現在地へ・表示をリセット" aria-label="現在地へ">◎</button>
       <button class="map-btn" id="btnArcs" title="距離の弧を番手で表示">番手</button>
       <button class="map-btn" id="btnPrecise" title="立ち止まって位置を精密に計測">精密</button>
+      <button class="map-btn" id="btnVoiceMap" title="音声キャディ" aria-label="音声キャディ"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg></button>
       <button class="map-btn" id="btnPinClear" title="今日のピン位置を消す" hidden>ピン消</button>
     </div>
     <div class="gps-status" id="gpsStatus">GPS 取得待ち</div>
@@ -75,6 +76,8 @@
     <div class="yd-side"><span class="yd-label">奥</span><span class="yd-num" id="ydBack">---</span></div>
     <div class="yd-pin" id="ydPin" hidden><span class="yd-label">今日のピン</span><b id="ydPinNum">---</b></div>
   </div>
+  <button class="btn primary voice-btn" id="btnVoice" aria-label="音声キャディ：残り距離・風・番手・攻め方を読み上げ"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg><span>音声キャディ</span><small>距離・風・番手・攻め方</small></button>
+  <p class="voice-text" id="voiceText" hidden></p>
   <div class="target-line" id="targetLine" hidden></div>
 
   <div class="detect-banner" id="detectBanner" hidden></div>
@@ -541,6 +544,7 @@
     <h2>表示</h2>
     <div class="form-grid">
       <label>距離の単位<select id="setUnit"><option value="yd">ヤード</option><option value="m">メートル</option></select></label>
+      <label>音声キャディの話す速さ<select id="setVoiceRate"><option value="0.9">ゆっくり</option><option value="1.05">ふつう</option><option value="1.25">はやめ</option></select></label>
       <label>名前<input id="setName" placeholder="スコア共有に表示"></label>
       <label>航空写真<select id="setImagery"><option value="gsi">国土地理院（標準）</option><option value="esri">Esri（高解像度）</option></select></label>
     </div>

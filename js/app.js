@@ -44,6 +44,7 @@ function initSettings() {
   };
   bind('setUnit', 'unit'); bind('setName', 'name'); bind('setClaudeKey', 'claudeKey'); bind('setModel', 'model');
   bind('setImagery', 'imagery');
+  bind('setVoiceRate', 'voiceRate'); if (!s.voiceRate) $('#setVoiceRate').value = '1.05';
   $('#setImagery').value = s.imagery || 'gsi';
   $('#setImagery').addEventListener('change', applyImagery);
   bind('setRakutenId', 'rakutenId'); bind('setRakutenKey', 'rakutenKey'); bind('setRakutenAff', 'rakutenAff');
