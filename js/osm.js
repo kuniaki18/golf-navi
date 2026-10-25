@@ -207,8 +207,11 @@ export function buildHoles(f, userHoles = {}) {
     if (u?.hidden) continue;
     if (have.has(key)) {
       const h = out.find((x) => x.key === key);
-      // a hole drawn by us from the aerial photo gives way to the player's own registration (or the community's)
-      if (h.drawn && u?.tee && u?.green && !u.est) out.splice(out.indexOf(h), 1);
+      // a hole drawn by us from the aerial photo gives way to the player's own registration — only one tapped by hand
+      // (not auto-learned) and of a believable length: an old stray tap once made 草津温泉 1番 1,500 yd
+      const own = h.drawn && u?.tee && u?.green && !u.est && !u.learned && !u.community && [u.tee, u.mid, u.green].filter(Boolean);
+      const r = own ? lineLength(own) / h.lengthM : 0;
+      if (own && r > 0.7 && r < 1.4) out.splice(out.indexOf(h), 1);
       else {
         // user may correct par on a mapped hole
         if (u?.par) h.par = u.par;

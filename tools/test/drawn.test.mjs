@@ -12,11 +12,16 @@ test('草津温泉: all 18 holes are drawn, each ending on a mapped green', () =
   assert.equal(new Set(holes.map((h) => h.green.id)).size, 18, 'no green used twice');
 });
 
-test("the player's own tee + green replaces a drawn hole; a tee alone does not", () => {
+test("a hand-registered hole of believable length replaces a drawn hole; a stray or learned one does not", () => {
   const f = parseCompact(j);
-  const g = { lat: 36.6, lon: 138.6 }, t = { lat: 36.601, lon: 138.6 };
-  const h2 = buildHoles(f, { 2: { tee: t, green: g } }).find((h) => h.key === '2');
-  assert.equal(h2.source, 'user'); assert.ok(!h2.drawn);
-  const h3 = buildHoles(f, { 3: { tee: t } }).find((h) => h.key === '3');
-  assert.ok(h3.drawn);
+  const d2 = buildHoles(f).find((h) => h.key === '2');
+  // the player's own tap, about the same length as the drawing
+  const own = buildHoles(f, { 2: { tee: d2.tee, green: d2.center } }).find((h) => h.key === '2');
+  assert.equal(own.source, 'user'); assert.ok(!own.drawn);
+  // a stray registration 1,500 yd long keeps the drawing
+  const far = { lat: d2.center.lat + 0.012, lon: d2.center.lon };
+  assert.ok(buildHoles(f, { 2: { tee: far, green: d2.center } }).find((h) => h.key === '2').drawn);
+  // auto-learned positions and a tee alone keep the drawing too
+  assert.ok(buildHoles(f, { 2: { tee: d2.tee, green: d2.center, learned: true } }).find((h) => h.key === '2').drawn);
+  assert.ok(buildHoles(f, { 3: { tee: d2.tee } }).find((h) => h.key === '3').drawn);
 });
