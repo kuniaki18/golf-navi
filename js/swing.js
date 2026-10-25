@@ -2,7 +2,7 @@
 // phase detection (address / top / impact / finish), swing metrics, advice with drills, history, and AI coaching.
 import { $, $$, esc, toast, clamp, md, uid } from './util.js';
 import { state, save } from './store.js';
-import { askClaude, COACH_SYSTEM, hasAI } from './ai.js';
+import { askClaude, COACH_SYSTEM, hasAI, needAI } from './ai.js';
 import { evaluate } from './swingeval.js';
 export { evaluate };
 
@@ -277,7 +277,7 @@ function renderHistory() {
 
 async function aiCoach() {
   if (!result) { toast('先にスイングを解析してください'); return; }
-  if (!hasAI()) { toast('設定でClaudeのAPIキーを入れるとAIコーチが使えます', 3500); return; }
+  if (needAI('AIスイングコーチ')) return;
   const out = $('#swAiOut'); out.hidden = false; out.innerHTML = '<p class="muted">AIコーチがスイングを見ています…</p>';
   const imgs = result.thumbs.map((t) => t.img.split(',')[1]);
   const prompt = `添付の4枚は私のゴルフスイングの「アドレス・トップ・インパクト・フィニッシュ」です（${result.view === 'face' ? '正面' : '飛球線後方'}から撮影、${result.hand === 'left' ? '左打ち' : '右打ち'}）。水色の線は骨格の自動検出、白い点線の円はアドレス時の頭の位置、黄色の点線はアドレス時の背骨の角度です。

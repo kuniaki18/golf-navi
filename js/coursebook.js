@@ -4,7 +4,7 @@ import { state, save, getNote } from './store.js';
 import { courseFeatures, buildHoles, setLabel } from './osm.js';
 import { holeStrategy } from './strategy.js';
 import { HoleView } from './holeview.js';
-import { askClaude, COACH_SYSTEM, hasAI } from './ai.js';
+import { askClaude, COACH_SYSTEM, hasAI, needAI } from './ai.js';
 import { currentCourseData } from './navi.js';
 
 let views = [];
@@ -110,7 +110,7 @@ function summarize(rows) {
 }
 
 async function aiCourse(rows, sum) {
-  if (!hasAI()) { toast('設定でClaudeのAPIキーを入れるとAIの作戦立てが使えます', 3500); return; }
+  if (needAI('AIの作戦立て')) return;
   const c = state.course;
   const out = $('#aiCourseOut'); out.hidden = false; out.innerHTML = '<p class="muted">コース全体の作戦を立てています…</p>';
   const data = rows.map(({ h, s }) => ({ hole: h.no, par: h.par, yards: Math.round(m2y(h.lengthM)), doglegs: s.doglegs, hazards: s.hazards.map((x) => ({ t: x.type, fromTee: Math.round(x.alongY), side: x.latY > 5 ? 'L' : x.latY < -5 ? 'R' : 'C', nearGreen: x.nearGreen })), green: s.shape && { depth: Math.round(s.shape.depth), width: Math.round(s.shape.width) } }));

@@ -2,7 +2,7 @@
 import { $, esc, toast, md } from './util.js';
 import { state, save } from './store.js';
 import { total, isGIR } from './score.js';
-import { askClaude, COACH_SYSTEM, hasAI } from './ai.js';
+import { askClaude, COACH_SYSTEM, hasAI, needAI } from './ai.js';
 import { swingStats } from './swing.js';
 import { clubStats as clubStatsOf, carryRatio } from './clubmath.js';
 
@@ -167,7 +167,7 @@ function drawTrend(scores, target) {
 }
 
 async function aiCoach() {
-  if (!hasAI()) { toast('設定でClaudeのAPIキーを入れるとAIコーチが使えます', 3500); return; }
+  if (needAI('AIコーチ')) return;
   const st = computeStats();
   if (!st) { toast('まずラウンドを1つ以上保存してください'); return; }
   const out = $('#aiCoachOut');

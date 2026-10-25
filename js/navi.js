@@ -5,7 +5,7 @@ import { state, save, getCourseCache, putCourseCache, getNote, setNote } from '.
 import { courseFeatures, buildHoles, nearestHole, matchCourse, greensNear, setLabel } from './osm.js';
 import { playsLike, recommendClub, weather, headComponent, crossComponent, elevations, elevationSource, compass } from './advice.js';
 import { holeStrategy, hazardDistancesFrom } from './strategy.js';
-import { askClaude, COACH_SYSTEM, hasAI } from './ai.js';
+import { askClaude, COACH_SYSTEM, hasAI, needAI } from './ai.js';
 import { HoleView, IMAGERY, setImagery } from './holeview.js';
 import { analyzeGreen, readPutt, greenCondition } from './greenslope.js';
 import { GpsFilter } from './gpsfilter.js';
@@ -691,7 +691,7 @@ export function renderShotLog() {
 async function aiHole() {
   const h = curHole();
   if (!state.course || !h) { toast('コースを選んでください'); return; }
-  if (!hasAI()) { toast('設定でClaudeのAPIキーを入れるとAI攻略が使えます', 3500); return; }
+  if (needAI('AI攻略')) return;
   const out = $('#aiHoleOut');
   out.hidden = false; out.innerHTML = '<p class="muted">AIが航空写真とデータからホールを解析しています…</p>';
   const s = strat || { tips: [], hazards: [] };

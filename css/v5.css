@@ -150,3 +150,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
   .icon-btn { padding: 2px; }
   .course-chip { font-size: .76rem; padding: 4px 10px; }
 }
+
+/* AI key guide */
+.ai-guide summary { cursor: pointer; font-weight: 700; color: var(--green); }
+.ai-guide ol { margin: 8px 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 6px; font-size: .9rem; }
+.ai-guide code { font-family: var(--mono); background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+.ai-need { border: 0; border-radius: 22px; padding: 20px 18px; max-width: min(420px, calc(100vw - 32px)); background: var(--surface); color: var(--fg); box-shadow: 0 24px 60px rgba(0, 0, 0, .35); }
+.ai-need::backdrop { background: rgba(3, 12, 7, .55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.ai-need h2 { margin-bottom: 8px; }
+.ai-need p { margin: 0 0 10px; font-size: .92rem; }

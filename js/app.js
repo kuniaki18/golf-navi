@@ -8,6 +8,7 @@ import { maybeOnboard } from './onboard.js';
 import { initFeedback } from './feedback.js';
 import { initCourses } from './courses.js';
 import { bundledCourses } from './osm.js';
+import { testKey } from './ai.js';
 import { initScore, syncCourse } from './score.js';
 import { initTracer } from './tracer.js';
 import { initBooking } from './booking.js';
@@ -29,6 +30,26 @@ function goto(tab) {
   if (tab === 'weather') loadForecast(false);
   if (tab === 'group') onGroupShown();
   if (tab === 'book') openBook();
+}
+
+function initAiKey() {
+  const st = $('#keyStatus');
+  const show = () => { st.textContent = state.settings.claudeKey ? 'キーが入っています。「接続テスト」で使えるか確認できます。' : 'キーは未設定です。AI以外の機能はそのまま使えます。'; };
+  show();
+  $('#setClaudeKey').addEventListener('change', () => { $('#setClaudeKey').value = $('#setClaudeKey').value.trim(); show(); });
+  $('#btnTestKey').onclick = async () => {
+    const key = $('#setClaudeKey').value.trim();
+    if (!key) { st.textContent = '先にAPIキーを貼り付けてください。'; return; }
+    if (!/^sk-ant-/.test(key)) { st.textContent = 'APIキーは「sk-ant-」で始まる文字です。コピーした内容を確認してください。'; return; }
+    state.settings.claudeKey = key; save('settings');
+    st.textContent = '確認中…';
+    try { const r = await testKey(key); st.textContent = r.ok ? '✓ 使えます。AIの機能をお試しください。' : '× ' + r.text; }
+    catch { st.textContent = '× 通信できませんでした。電波の良い所でもう一度お試しください。'; }
+  };
+  $('#btnClearKey').onclick = () => { if (!confirm('この端末からAPIキーを削除しますか？')) return; state.settings.claudeKey = ''; $('#setClaudeKey').value = ''; save('settings'); show(); };
+  const dlg = $('#aiNeedDlg');
+  $('#aiNeedClose').onclick = () => dlg.close();
+  $('#aiNeedGo').onclick = () => { dlg.close(); goto('settings'); $('#aiGuide').open = true; setTimeout(() => $('#aiCard').scrollIntoView({ behavior: 'smooth', block: 'start' }), 80); };
 }
 
 function courseChip() {
@@ -55,6 +76,7 @@ function initSettings() {
   };
   bind('setUnit', 'unit'); bind('setName', 'name'); bind('setClaudeKey', 'claudeKey'); bind('setModel', 'model');
   bind('setImagery', 'imagery');
+  initAiKey();
   bind('setVoiceRate', 'voiceRate'); if (!s.voiceRate) $('#setVoiceRate').value = '1.05';
   $('#setImagery').value = s.imagery || 'gsi';
   $('#setImagery').addEventListener('change', applyImagery);

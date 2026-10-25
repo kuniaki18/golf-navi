@@ -552,15 +552,27 @@
     <label class="check"><input type="checkbox" id="setWake" checked> プレー中は画面を消さない</label>
     <label class="check"><input type="checkbox" id="setShareMaps" checked> 登録したホール（ティーとグリーンの位置）を「みんなの地図」に提供する</label>
   </div>
-  <div class="card">
+  <div class="card" id="aiCard">
     <h2>AI（Claude）</h2>
-    <p class="muted">AI攻略・AIコーチ・スコアカードの手書き読み取りに使います（使わなくても他の機能は全部無料）。キーはこの端末の中だけに保存され、Anthropic以外には送信しません。友だちのスマホではあなたのキーは使われず、料金もかかりません。</p>
+    <p class="muted">AI攻略・AIコーチ・スイングのAI診断・スコアカードの手書き読み取り・コーデ提案に使います（使わなくても他の機能は全部無料）。<b>AIはご自分のAPIキーで使う仕組み</b>で、料金はキーを作った人のAnthropicアカウントに、使った分だけかかります。キーはこの端末の中だけに保存され、Anthropic以外には送信しません。アプリを教えてくれた人や他の人の料金にはなりません。</p>
+    <details class="ai-guide" id="aiGuide">
+      <summary>APIキーの作り方（5分ほど）</summary>
+      <ol>
+        <li><a class="link" href="https://console.anthropic.com/" target="_blank" rel="noopener">Anthropicの管理画面（console.anthropic.com）</a>を開き、メールアドレスかGoogleアカウントで登録します。</li>
+        <li>左のメニューの「Billing（支払い）」でクレジットカードを登録し、クレジットを購入します（数ドル分で数百回使えます。最低額は画面で確認してください）。</li>
+        <li>使いすぎが心配なら「Limits（上限）」で月の上限額を決めておきます。自動チャージはオフのままで大丈夫です。</li>
+        <li>「API Keys」→「Create Key」でキーを作り、表示された <code>sk-ant-</code> で始まる文字をコピーします（キーは一度しか表示されません）。</li>
+        <li>下の「APIキー」に貼り付けて、「接続テスト」を押します。「使えます」と出たら完了です。</li>
+      </ol>
+      <p class="muted">キーは他の人に教えないでください。キーを知っている人は、あなたの料金でAIを使えてしまいます。漏れたかもと思ったら、管理画面でそのキーを削除して作り直してください。</p>
+    </details>
     <p class="muted">料金の目安（使った分だけ）：Sonnet 5.5で1回あたり約2〜8円、Haiku 5.5なら1回1円未満。1ラウンドで10回使っても数十円程度です。Anthropicの管理画面で月の上限額を設定できます。</p>
     <div class="form-grid">
       <label>APIキー<input id="setClaudeKey" type="password" placeholder="sk-ant-..." autocomplete="off"></label>
       <label>モデル<select id="setModel"><option value="claude-sonnet-5-5">Claude Sonnet 5.5（おすすめ）</option><option value="claude-opus-5-5">Claude Opus 5.5（高精度）</option><option value="claude-haiku-5-5">Claude Haiku 5.5（高速・安価）</option></select></label>
     </div>
-    <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">APIキーを発行する</a>
+    <div class="btn-row"><button class="btn primary" id="btnTestKey">接続テスト</button><button class="btn" id="btnClearKey">キーを削除</button><a class="btn" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">管理画面を開く</a></div>
+    <p class="muted" id="keyStatus" role="status"></p>
   </div>
   <div class="card">
     <h2>楽天GORA（予約・料金）</h2>
@@ -619,6 +631,12 @@
   <button class="btn small" id="btnInstallClose">閉じる</button>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
+<dialog class="ai-need" id="aiNeedDlg">
+  <h2><span data-feature>AI機能</span>を使うには</h2>
+  <p>AIの機能は、<b>ご自分のClaude APIキー</b>を設定すると使えます。料金は使った分だけ（1回あたり数円ほど）で、ご自分のAnthropicアカウントにかかります。</p>
+  <p class="muted">キーの作り方は設定画面に5ステップで書いてあります（5分ほど）。AIを使わなくても、距離・番手・スコア・スイングの採点などは無料で使えます。</p>
+  <div class="btn-row"><button class="btn primary" id="aiNeedGo">設定を開く</button><button class="btn" id="aiNeedClose">あとで</button></div>
+</dialog>
 <div class="onboard" id="onboard" hidden>
   <div class="ob-card">
     <div class="ob-step" data-s="1">

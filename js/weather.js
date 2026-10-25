@@ -2,7 +2,7 @@
 import { $, esc, toast, fmtDate, fetchJSON, md } from './util.js';
 import { state, save } from './store.js';
 import { rakuten, hasGora } from './gora.js';
-import { askClaude, COACH_SYSTEM, hasAI } from './ai.js';
+import { askClaude, COACH_SYSTEM, hasAI, needAI } from './ai.js';
 
 let fc = null; // forecast payload
 let fcKey = '';
@@ -158,7 +158,7 @@ function renderWear(cond) {
 const shopKeyword = (t) => (t >= 28 ? '半袖 ポロ 冷感' : t >= 22 ? '半袖 ポロ' : t >= 16 ? '長袖 ポロ ベスト' : t >= 10 ? 'ニット ハイネック' : 'ブルゾン 防寒');
 
 async function aiWear() {
-  if (!hasAI()) { toast('設定でClaudeのAPIキーを入れるとAIコーデ提案が使えます', 3500); return; }
+  if (needAI('AIコーデ提案')) return;
   const dd = dayData($('#wxDate').value);
   if (!dd) return;
   const out = $('#aiWearOut'); out.hidden = false; out.innerHTML = '<p class="muted">コーデを考えています…</p>';
