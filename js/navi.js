@@ -429,6 +429,10 @@ export async function loadCourse(force) {
   scorecard = null; holeNotes = null;
   try { const { bundledCourses } = await import('./osm.js'); const b = (await bundledCourses()).find((x) => x.id === (c.osmId || c.id)); if (b?.scorecard) { scorecard = await (await fetch(`data/sc/${b.id}.json`)).json(); holeNotes = await fetch(`data/notes/${b.id}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null); } } catch {}
   officialCard = scorecard ? { ...scorecard, source: 'official' } : null;
+  // the card came from a GORA course page: link to that course's layout drawings (opens GORA; nothing is copied)
+  const gora = /gora\.golf\.rakuten\.co\.jp\/guide\/course_info\/disp\/c_id\/(\d+)/.exec(officialCard?.source || '');
+  $('#goraLayout').hidden = !gora;
+  if (gora) $('#goraLayout').href = `https://booking.gora.golf.rakuten.co.jp/guide/course_info/layout/disp/c_id/${gora[1]}`;
   communityCard = null; try { const d = await communityDoc(c.id); if (d?.scorecard?.courses?.length) communityCard = { ...d.scorecard, source: 'community' }; } catch {}
   pickScorecard();
   rebuild(true);

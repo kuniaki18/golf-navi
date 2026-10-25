@@ -333,6 +333,16 @@ export class HoleView {
           ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.arc(m.x, m.y, 46, hd - 0.38, hd + 0.38); ctx.closePath(); ctx.fill();
         }
         ctx.fillStyle = '#2f8bff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(m.x, m.y, 8, 0, 7); ctx.fill(); ctx.stroke();
+        // on the illustration, say how far the player is from the green right at the dot
+        if (art && this.mode === 'hole') { ctx.font = '700 13px system-ui'; tag(ctx, m.x, m.y + 24, `現在地・残り ${fmt(dist(d.me, f.green))}${unit}`, 'rgba(0,0,0,.75)', '#fff'); }
+      } else if (art && this.mode === 'hole') {
+        // off the drawing: an arrow on the edge pointing at the player
+        const cx = W / 2, cy = H / 2, ang = Math.atan2(m.y - cy, m.x - cx);
+        const k = Math.min((W / 2 - 28) / Math.abs(Math.cos(ang) || 1e-6), (H / 2 - 28) / Math.abs(Math.sin(ang) || 1e-6));
+        const ex = cx + Math.cos(ang) * k, ey = cy + Math.sin(ang) * k;
+        ctx.save(); ctx.translate(ex, ey); ctx.rotate(ang); ctx.fillStyle = '#2f8bff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -9); ctx.lineTo(-8, 9); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+        ctx.font = '700 12px system-ui'; tag(ctx, ex - Math.cos(ang) * 30, ey - Math.sin(ang) * 22, `現在地 ${fmt(dist(d.me, f.green))}${unit}`, 'rgba(0,0,0,.75)', '#fff');
       }
     }
     // tee marker when player is elsewhere
