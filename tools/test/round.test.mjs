@@ -63,3 +63,15 @@ test('27-hole club with an 18-hole map: offered by official names; third course 
   assert.equal(planPars(null, hs, sc)[0], 5);
   assert.notEqual(hs[9].key, hs[0].key);
 });
+
+test('36-hole club with two 18-hole cards and no map: both courses can be chosen', () => {
+  const all = Array.from({ length: 18 }, (_, i) => ({ no: i + 1, set: 0, key: String(i + 1), source: 'none', center: null }));
+  const h18 = Array.from({ length: 18 }, () => ({ par: 4, yd: 380 }));
+  const sc = { courses: [{ name: '草花', holes: h18 }, { name: '奥多摩', holes: h18 }] };
+  const n = ninesOf(all, name, sc);
+  assert.deepEqual(n.map((x) => x.short), ['草花コース OUT', '草花コース IN', '奥多摩コース OUT', '奥多摩コース IN']);
+  const hs = planHoles(all, { front: n[2], back: n[3] });
+  assert.equal(hs[0].set, 1);
+  assert.equal(hs[0].key, '1-2');
+  assert.equal(hs[17].key, '18-2');
+});

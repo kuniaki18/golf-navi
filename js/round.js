@@ -36,6 +36,19 @@ function mapNines(allHoles, nameOf) {
 export function ninesOf(allHoles, nameOf, scorecard = null) {
   const map = mapNines(allHoles, nameOf);
   const sc = scorecard?.courses || [];
+  // 36-hole club (two 18-hole courses on the card) but the map has fewer courses: offer every course's OUT / IN,
+  // the k-th course on its own set of holes (empty until registered)
+  const sets = [...new Set(allHoles.map((h) => h.set || 0))];
+  if (sc.length >= 2 && sc.every((c) => c.holes?.length === 18) && sets.length < sc.length) {
+    return sc.flatMap((c, k) => {
+      const nm = c.name ? (/コース$/.test(c.name) ? c.name : `${c.name}コース`) : nameOf(k);
+      const cnt = (a, b) => allHoles.filter((h) => (h.set || 0) === k && h.no >= a && h.no <= b && h.center).length;
+      return [
+        { id: `${k}:1`, set: k, from: 1, to: 9, name: `${nm} OUT（1〜9番）`, short: `${nm} OUT`, mapped: cnt(1, 9) },
+        { id: `${k}:10`, set: k, from: 10, to: 18, name: `${nm} IN（10〜18番）`, short: `${nm} IN`, mapped: cnt(10, 18) },
+      ];
+    });
+  }
   if (sc.length < 2 || !sc.every((c) => c.holes?.length === 9)) return map;
   const used = new Set(map.map((n) => n.set));
   let spare = Math.max(0, ...used) + 1;

@@ -17,7 +17,7 @@ const role = (n) => {
   return null;
 };
 const nameOf = (c, i, all) => (all.length === 1 ? '' : String(c.name || '').replace(/(コース|course)$/i, '').trim() || `${i + 1}`);
-const totals = {};
+const totals = {}, totalsFrom = {};
 const courses = t.courses.map((c, i, all) => {
   // tees in use: optionally only one green set (e.g. 'A')
   let idx = c.teeNames.map((n, k) => ({ n, k })).filter((x) => !prefix || String(x.n).startsWith(prefix));
@@ -34,11 +34,11 @@ const courses = t.courses.map((c, i, all) => {
   }
   if (roles.yd == null) throw new Error(`${c.name}: no regular tee among ${c.teeNames.join(', ')}`);
   const tt = t.teeTotals?.[c.name] || {};
-  for (const [r, k] of Object.entries(roles)) { const v = tt[c.teeNames[k]]; if (v != null) totals[r] = (totals[r] || 0) + v; }
+  for (const [r, k] of Object.entries(roles)) { const v = tt[c.teeNames[k]]; if (v != null) { totals[r] = (totals[r] || 0) + v; totalsFrom[r] = (totalsFrom[r] || 0) + 1; } }
   return { name: nameOf(c, i, all), holes: c.holes.map((h) => { const o = { par: h.par }; for (const [r, k] of Object.entries(roles)) if (h.yards[k] != null) o[r] = h.yards[k]; return o; }) };
 });
-// totals only when every course had them for that tee
-for (const r of Object.keys(totals)) if (!t.courses.every((c) => Object.keys(t.teeTotals?.[c.name] || {}).some((n) => courses.length && n))) delete totals[r];
+// a published total is checked only when every course had one for that tee
+for (const r of Object.keys(totals)) if (totalsFrom[r] !== t.courses.length) delete totals[r];
 const card = { id, source: `公表されているコース情報（パー・ヤード）${source}`, totals, courses };
 const out = file.replace(/\.json$/, '.card.json');
 fs.writeFileSync(out, JSON.stringify(card));
