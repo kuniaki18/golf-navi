@@ -143,10 +143,18 @@ export class HoleView {
       const S0 = (p) => this._toScreen(f, p);
       // registering a hole on the aerial photo: mapped greens are outlined (tap one), and once the tee is set a ring
       // shows the official yardage so the right green is easy to find
+      // greens already given to another hole are dimmed with that hole's number; greens whose distance from the tapped
+      // tee fits the official yardage are marked as candidates
+      const used = this.d.usedGreens || [], cand = this.d.greenCands || [];
       for (const g of this.d.features?.greens || []) {
         if (!g.pts?.length || !g.c || dist(g.c, f.green) > 1500) continue;
+        const u = used.find((x) => dist(x.c, g.c) < 25), isCand = cand.includes(g.id);
         ctx.beginPath(); g.pts.forEach((p, i) => { const q = S0(p); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }); ctx.closePath();
-        ctx.fillStyle = 'rgba(120,255,140,.28)'; ctx.fill(); ctx.strokeStyle = 'rgba(200,255,200,.95)'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = u ? 'rgba(160,160,160,.22)' : isCand ? 'rgba(255,214,10,.35)' : 'rgba(120,255,140,.28)'; ctx.fill();
+        ctx.strokeStyle = u ? 'rgba(200,200,200,.6)' : isCand ? '#ffd60a' : 'rgba(200,255,200,.95)'; ctx.lineWidth = isCand ? 3.5 : 2; ctx.stroke();
+        const q = S0(g.c); ctx.font = '700 12px system-ui';
+        if (u) tag(ctx, q.x, q.y, `${u.no}番`, 'rgba(0,0,0,.6)', '#ddd');
+        else if (isCand) tag(ctx, q.x, q.y - 14, '候補', 'rgba(0,0,0,.75)', '#ffd60a');
       }
       const tee = this.d.draft?.tee;
       if (tee && this.d.ringM) {

@@ -560,6 +560,22 @@ function renderStrategy() {
   $('#holeTips').innerHTML = guide.join('') + [...estNote, ...strat.tips].map((t, i) => `<li${estNote.length && i === 0 ? ' class="muted"' : ''}>${esc(t)}</li>`).join('');
 }
 
+/** registering an unmapped hole: greens other holes already use, and the free greens that fit the official yardage from the tapped tee */
+function greenHelp(h, draft) {
+  const usedGreens = holes.filter((x) => x !== h && x.center).map((x) => ({ c: x.center, no: `${x.nineName ? x.nineName + ' ' : ''}${x.dispNo ?? x.no}` }));
+  let greenCands = [];
+  if (draft?.tee && h.officialY && features?.greens?.length) {
+    // the card measures along the fairway, so a dogleg's straight line is shorter: allow 78–105 % of the official length
+    const want = y2m(h.officialY);
+    greenCands = features.greens
+      .filter((g) => g.c && !usedGreens.some((u) => dist(u.c, g.c) < 25))
+      .map((g) => ({ id: g.id, r: dist(draft.tee, g.c) / want }))
+      .filter((x) => x.r > 0.78 && x.r < 1.05)
+      .sort((a, b) => Math.abs(1 - a.r) - Math.abs(1 - b.r)).slice(0, 2).map((x) => x.id);
+  }
+  return { usedGreens, greenCands };
+}
+
 // ---------------- main render ----------------
 function render() {
   const h = curHole();
@@ -568,13 +584,15 @@ function render() {
   const draft = h && !h.center ? userHoles()[h.key] : null;
   const prevGreen = holes[holeIdx - 1]?.center;
   const area = !state.course ? null : me && dist(me, state.course) < 2500 ? me : draft?.tee || prevGreen || { lat: state.course.lat, lon: state.course.lon };
+  const reg = h && !h.center ? greenHelp(h, draft) : {};
   hv?.set({
+    ...reg,
     hole: h, features, me, acc: meAcc, target, pin, unit: unit() === 'm' ? 'm' : 'yd', hazards: strat?.hazards || [], area, draft,
     arcs: state.ui.arcs === 'clubs' ? state.clubs : null, wind: wx, shots: todaysShots(h),
     slope: view === 'green' ? curSlope : null, heading: compassHeading ?? gpsHeading,
     ringM: draft?.tee && h?.officialY ? y2m(h.officialY) : null, ringLabel: h?.officialY ? `公式 ${fmt(h.officialY)}${ul()}` : '',
     areaSpan: draft?.tee && h?.officialY ? Math.max(450, y2m(h.officialY) * 2.4) : 450,
-    emptyText: !state.course ? 'コースを選ぶとホールが表示されます' : draft?.tee ? `${h.dispNo ?? h.no}番：グリーンをタップ${h.officialY ? '（黄色の円が公式の距離）' : ''}` : `${h?.dispNo ?? h?.no ?? ''}番${h?.par ? `（パー${h.par}${h.officialY ? `・${fmt(h.officialY)}${ul()}` : ''}）` : ''}：ティーをタップ（緑の枠は地図にあるグリーン）`,
+    emptyText: !state.course ? 'コースを選ぶとホールが表示されます' : draft?.tee ? `${h.dispNo ?? h.no}番：グリーンをタップ${h.officialY ? (reg.greenCands?.length ? '（「候補」が公式の距離に合うグリーン）' : '（黄色の円が公式の距離）') : ''}` : `${h?.dispNo ?? h?.no ?? ''}番${h?.par ? `（パー${h.par}${h.officialY ? `・${fmt(h.officialY)}${ul()}` : ''}）` : ''}：ティーをタップ（緑の枠は地図にあるグリーン、灰色は登録済み）`,
   });
   if (view === 'map') renderMapOverlay(c);
   renderMappingCard(h);
