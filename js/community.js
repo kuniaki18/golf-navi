@@ -17,7 +17,25 @@ export async function submitHole(course, key, hole) {
   try { await fetch(`https://ntfy.sh/${COMMUNITY_TOPIC}`, { method: 'POST', body }); } catch {}
 }
 
+/** share a typed-in scorecard (par / yardage) so everyone gets it after the next merge */
+export async function submitScorecard(course, card) {
+  if (state.settings.shareMaps === false || !course || !card?.courses?.length) return;
+  state.deviceId ??= Math.random().toString(36).slice(2);
+  const body = JSON.stringify({ v: 1, t: 'sc', courseId: course.id, courseName: course.name, courses: card.courses, by: state.deviceId.slice(0, 8), at: Date.now() });
+  try { await fetch(`https://ntfy.sh/${COMMUNITY_TOPIC}`, { method: 'POST', body }); } catch {}
+}
+
 const cache = new Map();
+const docs = new Map();
+/** the merged community document of a course ({ holes, scorecard }) or null */
+export async function communityDoc(courseId) {
+  if (!courseId) return null;
+  if (docs.has(courseId)) return docs.get(courseId);
+  let doc = null;
+  if (courseId in (await communityIndex())) { try { doc = await fetchJSON(`data/community/${encodeURIComponent(courseId)}.json`, {}, 15000); } catch {} }
+  docs.set(courseId, doc);
+  return doc;
+}
 let index = null;
 export async function communityIndex() {
   if (!index) { try { index = await fetchJSON('data/community/_index.json', {}, 15000); } catch { index = {}; } }
@@ -26,9 +44,8 @@ export async function communityIndex() {
 export async function communityHoles(courseId) {
   if (!courseId) return {};
   if (cache.has(courseId)) return cache.get(courseId);
-  let holes = {};
-  if (!(await communityIndex())[courseId]) { cache.set(courseId, holes); return holes; }
-  try { const j = await fetchJSON(`data/community/${encodeURIComponent(courseId)}.json`, {}, 15000); holes = j.holes || {}; } catch {}
+  const doc = await communityDoc(courseId);
+  const holes = { ...(doc?.holes || {}) };
   for (const h of Object.values(holes)) h.community = true;
   cache.set(courseId, holes);
   return holes;

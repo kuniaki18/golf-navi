@@ -204,3 +204,16 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .round-bar.live .rb-gps { font-size: .74rem; }
 .round-bar.live .rb-gps.ok::before { content: "● "; color: #4ee08e; }
 .round-bar.live .rb-gps.wait { color: #ffd27a; }
+
+/* course data accuracy & scorecard entry */
+.data-list { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 4px; font-size: .88rem; }
+.sc-edit { width: min(520px, calc(100vw - 24px)); max-height: 88vh; overflow-y: auto; }
+.sc-block { border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px 10px; margin: 0 0 10px; }
+.sc-block legend { padding: 0 4px; }
+.sc-name { width: 12em; min-height: 34px; font-weight: 700; }
+.sc-grid { display: grid; grid-template-columns: 2em 1fr 1.3fr 1.3fr; gap: 4px 6px; align-items: center; }
+.sc-grid .hd { font-size: .72rem; color: var(--muted); }
+.sc-grid .no { font: 700 1rem/1 var(--display); text-align: center; }
+.sc-grid select, .sc-grid input { min-height: 36px; padding: 4px 6px; font-size: .95rem; }
+.sc-err { color: var(--danger); font-size: .85rem; margin: 0 0 8px; padding-left: 1.2em; }
+.sc-err:empty { display: none; }

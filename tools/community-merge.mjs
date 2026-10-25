@@ -3,6 +3,8 @@
 import fs from 'node:fs';
 const TOPIC = process.env.TOPIC || 'kunikuni-golf-holes-v1';
 const STATE = 'data/community/_state.json';
+// test / mistaken submissions that must never be merged
+const BLOCKED = fs.existsSync('data/community/_blocked.json') ? JSON.parse(fs.readFileSync('data/community/_blocked.json', 'utf8')) : { ids: [], by: [] };
 const st = fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, 'utf8')) : { since: '12h' };
 const courses = new Map(JSON.parse(fs.readFileSync('data/courses-jp.json', 'utf8')).courses.map((c) => [c.id, c]));
 
@@ -19,8 +21,23 @@ for (const line of lines) {
   let m; try { m = JSON.parse(line); } catch { continue; }
   if (m.event !== 'message') continue;
   lastId = m.id;
+  if (BLOCKED.ids.includes(m.id)) { rejected++; continue; }
   let s; try { s = JSON.parse(m.message); } catch { rejected++; continue; }
+  if (BLOCKED.by.includes(s.by)) { rejected++; continue; }
   const c = courses.get(s.courseId);
+  if (s.t === 'sc') {
+    // scorecard: 1–4 courses of 9 / 18 holes, par 3–6, 50–700 y
+    const cs = Array.isArray(s.courses) ? s.courses.slice(0, 4) : [];
+    const valid = c && cs.length && cs.every((k) => Array.isArray(k.holes) && [9, 18].includes(k.holes.length) && k.holes.every((h) => [3, 4, 5, 6].includes(h.par) && h.yd >= 50 && h.yd <= 700 && (h.back == null || (h.back >= h.yd && h.back <= 750))));
+    if (!valid) { rejected++; continue; }
+    const f = `data/community/${s.courseId}.json`;
+    const doc = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : { courseId: s.courseId, name: c.n, subs: {} };
+    (doc.scSubs ??= {})[s.by] = { courses: cs.map((k) => ({ name: String(k.name || '').slice(0, 12), holes: k.holes.map((h) => (h.back != null ? { par: h.par, yd: h.yd, back: h.back } : { par: h.par, yd: h.yd })) })), at: s.at };
+    fs.mkdirSync('data/community', { recursive: true });
+    fs.writeFileSync(f, JSON.stringify(doc));
+    touched.add(f); accepted++;
+    continue;
+  }
   const key = String(s.key || '');
   if (!c || !/^\d{1,2}(-\d)?$/.test(key) || !ok(s.tee) || !ok(s.green) || (s.mid && !ok(s.mid))) { rejected++; continue; }
   const center = { lat: c.a, lon: c.o };
@@ -40,10 +57,17 @@ for (const line of lines) {
 for (const f of touched) {
   const doc = JSON.parse(fs.readFileSync(f, 'utf8'));
   doc.holes = {};
-  for (const [key, subs] of Object.entries(doc.subs)) {
+  for (const [key, subs] of Object.entries(doc.subs || {})) {
     const med = (k) => { const ps = subs.map((x) => x[k]).filter(Boolean); return ps.length ? { lat: median(ps.map((p) => p.lat)), lon: median(ps.map((p) => p.lon)) } : null; };
     const pars = subs.map((x) => x.par).filter(Boolean);
     doc.holes[key] = { tee: med('tee'), green: med('green'), mid: subs.filter((x) => x.mid).length * 2 > subs.length ? med('mid') : null, par: pars.length ? median(pars) : null, votes: subs.length, updatedAt: Math.max(...subs.map((x) => x.at || 0)) };
+  }
+  // scorecard: the version most devices agree on (ties: the newest)
+  if (doc.scSubs) {
+    const votes = new Map();
+    for (const sub of Object.values(doc.scSubs)) { const k = JSON.stringify(sub.courses); const v = votes.get(k) || { courses: sub.courses, n: 0, at: 0 }; v.n++; v.at = Math.max(v.at, sub.at || 0); votes.set(k, v); }
+    const best = [...votes.values()].sort((a, b) => b.n - a.n || b.at - a.at)[0];
+    doc.scorecard = { courses: best.courses, votes: best.n, devices: Object.keys(doc.scSubs).length, updatedAt: best.at };
   }
   doc.updatedAt = new Date().toISOString();
   fs.writeFileSync(f, JSON.stringify(doc));

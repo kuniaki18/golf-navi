@@ -10,7 +10,8 @@ import { HoleView, IMAGERY, setImagery } from './holeview.js';
 import { analyzeGreen, readPutt, greenCondition } from './greenslope.js';
 import { GpsFilter } from './gpsfilter.js';
 import { greenDistances as greenDist, greenKey } from './geo.js';
-import { submitHole, communityHoles } from './community.js';
+import { submitHole, communityHoles, communityDoc, submitScorecard } from './community.js';
+import { dataQuality, checkScorecard } from './coursedata.js';
 import { ninesOf, defaultPlan, planHoles, planPars, scRow } from './round.js';
 import { beginRound } from './score.js';
 import { caddieScript, speak, canSpeak, speaking, stopSpeaking, browserKind, externalBrowserUrl, speechHelp } from './voice.js';
@@ -97,6 +98,10 @@ export function initNavi() {
   };
   $('#btnVoice').onclick = voiceCaddie;
   $('#stGo').onclick = startRound;
+  $('#btnScEdit').onclick = openScorecardEditor;
+  $('#scEditSave').onclick = saveScorecardEditor;
+  $('#scEditCancel').onclick = () => $('#scEditDlg').close();
+  $('#scEditClear').onclick = clearMyScorecard;
   $('#stCancel').onclick = () => $('#startDlg').close();
   $('#stTee').onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) $$('#stTee button').forEach((x) => x.classList.toggle('on', x === b)); };
   window.addEventListener('round-changed', renderRoundBar);
@@ -383,11 +388,20 @@ export async function loadCourse(force) {
   communityData = await communityHoles(c.id).catch(() => ({}));
   scorecard = null;
   try { const { bundledCourses } = await import('./osm.js'); const b = (await bundledCourses()).find((x) => x.id === (c.osmId || c.id)); if (b?.scorecard) scorecard = await (await fetch(`data/sc/${b.id}.json`)).json(); } catch {}
+  officialCard = scorecard ? { ...scorecard, source: 'official' } : null;
+  communityCard = null; try { const d = await communityDoc(c.id); if (d?.scorecard?.courses?.length) communityCard = { ...d.scorecard, source: 'community' }; } catch {}
+  pickScorecard();
   rebuild(true);
   await refreshWind();
 }
 
 let allHoles = [];
+let officialCard = null, communityCard = null;
+/** which par / yardage table to use: your own entry, then the official card shipped with the app, then the community's */
+function pickScorecard() {
+  const mine = cid() && state.scorecards?.[cid()];
+  scorecard = mine ? { ...mine, source: 'mine' } : officialCard || communityCard || null;
+}
 let scorecard = null;
 const courseName = (i) => (scorecard?.courses?.[i]?.name ? `${scorecard.courses[i].name}コース` : setLabel(i));
 let communityData = {};
@@ -420,6 +434,7 @@ function rebuild(first) {
   btn.onclick = () => { setSet((activeSet() + 1) % sets.length); state.ui.holeKey = null; rebuild(); toast(`${courseName(activeSet())}に切り替えました`); };
   renderCourseLayer();
   renderRoundBar();
+  renderDataCard();
   gotoHole(holeIdx, first || true);
 }
 function setSet(i, persist = true) {
@@ -592,6 +607,62 @@ async function refreshWind() {
   try { wx = await weather(state.course.lat, state.course.lon); wxAt = Date.now(); render(); } catch {}
 }
 setInterval(() => { if (state.course && Date.now() - wxAt > 15 * 60e3 && document.visibilityState === 'visible') refreshWind(); }, 60e3);
+
+// ---------------- course data accuracy & scorecard entry ----------------
+const SC_SRC = { official: '公式スコアカード（アプリに収録）', mine: 'あなたが入力したスコアカード', community: 'みんなが入力したスコアカード' };
+function renderDataCard() {
+  const box = $('#dataCard'); if (!box) return;
+  box.hidden = !state.course; if (box.hidden) return;
+  const q = dataQuality(holes, scorecard);
+  $('#dataLevel').className = `pill conf-${{ high: 'good', mid: 'fair', low: 'poor', none: 'none' }[q.level]}`;
+  $('#dataLevel').textContent = `精度：${q.label}`;
+  $('#dataBody').innerHTML = `<ul class="data-list">
+    <li><b>ホールの位置</b>：地図・登録 ${q.measured} / 自動学習 ${q.learned} / 推定 ${q.est} / 未登録 ${q.none}（全${q.n}ホール）</li>
+    <li><b>グリーンの形</b>：${q.shapes}ホール分（形が分かるホールだけ手前・奥の距離を出します）</li>
+    <li><b>パー・ヤード</b>：${q.scSource ? esc(SC_SRC[q.scSource]) + (scorecard.votes ? `（${scorecard.votes}人が同じ内容）` : '') : 'スコアカードなし（地図からの推定）'}</li></ul>
+    ${q.tips.length ? `<ul class="tips">${q.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p class="muted">このコースのデータは揃っています。</p>'}`;
+}
+/** the table shape: an existing scorecard's courses, or one block per course of the map (9 or 18 holes) */
+function scorecardDraft() {
+  if (scorecard?.courses?.length) return JSON.parse(JSON.stringify({ courses: scorecard.courses }));
+  const sets = [...new Set(allHoles.map((h) => h.set || 0))].sort((a, b) => a - b);
+  if (!sets.length) sets.push(0);
+  return { courses: sets.map((s0) => {
+    const hs = allHoles.filter((h) => (h.set || 0) === s0 && h.no <= 18);
+    const len = hs.some((h) => h.no > 9) || !hs.length ? 18 : 9;
+    return { name: sets.length > 1 ? courseName(s0).replace(/コース$/, '') : '', holes: Array.from({ length: len }, (_, i) => { const h = hs.find((x) => x.no === i + 1); return { par: h && !h.parEst ? h.par : '', yd: h?.officialY || '' }; }) };
+  }) };
+}
+function openScorecardEditor() {
+  if (!state.course) return;
+  const d = scorecardDraft();
+  const parSel = (v, c, i) => `<select data-c="${c}" data-i="${i}" data-f="par" aria-label="パー"><option value=""></option>${[3, 4, 5, 6].map((p) => `<option ${Number(v) === p ? 'selected' : ''}>${p}</option>`).join('')}</select>`;
+  const num = (v, c, i, fld, ph) => `<input data-c="${c}" data-i="${i}" data-f="${fld}" type="number" inputmode="numeric" min="50" max="750" value="${v ?? ''}" placeholder="${ph}" aria-label="${ph}">`;
+  $('#scEditBody').innerHTML = d.courses.map((c, k) => `<fieldset class="sc-block"><legend><input class="sc-name" data-c="${k}" data-f="name" value="${esc(c.name || '')}" placeholder="コース名（例: 東）" aria-label="コース名"></legend>
+    <div class="sc-grid"><span class="hd">番</span><span class="hd">パー</span><span class="hd">ヤード</span><span class="hd">バック</span>
+    ${c.holes.map((h, i) => `<span class="no">${i + 1}</span>${parSel(h.par, k, i)}${num(h.yd, k, i, 'yd', 'ヤード')}${num(h.back, k, i, 'back', '任意')}`).join('')}</div></fieldset>`).join('');
+  $('#scEditErr').textContent = '';
+  $('#scEditDlg').showModal();
+  $('#scEditDlg').dataset.shape = JSON.stringify(d.courses.map((c) => c.holes.length));
+}
+function saveScorecardEditor() {
+  const shape = JSON.parse($('#scEditDlg').dataset.shape || '[]');
+  const card = { courses: shape.map((n, k) => ({ name: $(`.sc-name[data-c="${k}"]`).value, holes: Array.from({ length: n }, (_, i) => {
+    const v = (fld) => $(`#scEditBody [data-c="${k}"][data-i="${i}"][data-f="${fld}"]`).value;
+    return { par: v('par'), yd: v('yd'), back: v('back') };
+  }) })) };
+  const r = checkScorecard(card);
+  if (!r.ok) { $('#scEditErr').innerHTML = r.errors.slice(0, 6).map((e) => `<li>${esc(e)}</li>`).join('') + (r.errors.length > 6 ? `<li>ほか${r.errors.length - 6}件</li>` : ''); return; }
+  (state.scorecards ??= {})[cid()] = r.card; save('scorecard');
+  submitScorecard(state.course, r.card);
+  $('#scEditDlg').close();
+  pickScorecard(); rebuild();
+  toast(state.settings.shareMaps === false ? 'スコアカードを保存しました' : 'スコアカードを保存しました。「みんなの地図」にも送りました（反映は数時間後）', 4000);
+}
+function clearMyScorecard() {
+  if (!state.scorecards?.[cid()]) { $('#scEditDlg').close(); return; }
+  delete state.scorecards[cid()]; save('scorecard'); $('#scEditDlg').close(); pickScorecard(); rebuild(); toast('あなたの入力を消して、元のデータに戻しました');
+}
 
 // ---------------- round: プレー開始 ----------------
 function roundActive() { const r = state.current; return !!(r?.plan && !r.ended && cid() && r.courseId === cid()); }

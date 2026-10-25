@@ -163,6 +163,11 @@
     </details>
   </div>
 
+  <div class="card" id="dataCard" hidden>
+    <div class="card-head"><h2>コースデータの精度</h2><span class="pill" id="dataLevel"></span></div>
+    <div id="dataBody"></div>
+    <div class="btn-row"><button class="btn primary small" id="btnScEdit">公式スコアカードを入力・修正</button></div>
+  </div>
   <div class="card tools-card">
     <button class="btn" id="btnCourseBook">攻略ブック（全ホール）</button>
     <button class="btn" id="btnShareIntel">攻略・ピン位置を仲間に共有</button>
@@ -650,6 +655,13 @@
   <button class="btn small" id="btnInstallClose">閉じる</button>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
+<dialog class="ai-need sc-edit" id="scEditDlg">
+  <h2>スコアカード（パー・ヤード）</h2>
+  <p class="muted">ゴルフ場のスコアカードや公式サイトを見ながら入力してください。ヤードはレギュラーティー、バックは分かる場合だけ。保存すると、このコースのパーと距離の表示に使い、「みんなの地図」で他の人にも共有します（設定でオフにできます）。</p>
+  <div id="scEditBody"></div>
+  <ul class="sc-err" id="scEditErr" role="alert"></ul>
+  <div class="btn-row"><button class="btn primary" id="scEditSave">保存</button><button class="btn" id="scEditCancel">やめる</button><button class="btn" id="scEditClear">自分の入力を消す</button></div>
+</dialog>
 <dialog class="ai-need start-dlg" id="startDlg">
   <h2>プレー開始</h2>
   <p class="muted" id="stCourse"></p>
