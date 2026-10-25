@@ -136,6 +136,20 @@ export class HoleView {
     if (this.useTiles) this._tiles(f, dpr); else this._tilesLoaded = false;
     if (f.empty) {
       const S0 = (p) => this._toScreen(f, p);
+      // registering a hole on the aerial photo: mapped greens are outlined (tap one), and once the tee is set a ring
+      // shows the official yardage so the right green is easy to find
+      for (const g of this.d.features?.greens || []) {
+        if (!g.pts?.length || !g.c || dist(g.c, f.green) > 1500) continue;
+        ctx.beginPath(); g.pts.forEach((p, i) => { const q = S0(p); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }); ctx.closePath();
+        ctx.fillStyle = 'rgba(120,255,140,.28)'; ctx.fill(); ctx.strokeStyle = 'rgba(200,255,200,.95)'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      const tee = this.d.draft?.tee;
+      if (tee && this.d.ringM) {
+        const c = S0(tee), r = this.d.ringM * f.s / (156543.03 * Math.cos(tee.lat * rad));
+        ctx.save(); ctx.setLineDash([10, 8]); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,214,10,.95)';
+        ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, 7); ctx.stroke(); ctx.restore();
+        ctx.font = '700 13px system-ui'; tag(ctx, c.x, c.y - r - 6, this.d.ringLabel || '', 'rgba(0,0,0,.75)', '#ffd60a');
+      }
       for (const [k, col] of [['tee', '#ffffff'], ['green', '#9cff9c']]) {
         const p = this.d.draft?.[k]; if (!p) continue;
         const q = S0(p); ctx.fillStyle = col; ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x, q.y, 8, 0, 7); ctx.fill(); ctx.stroke();

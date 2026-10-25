@@ -53,10 +53,20 @@ export function initNavi() {
       if (h && !h.center && state.course) {
         // register an unmapped hole straight from the aerial view: tee first, then green
         const u = userHoles(); const cur = u[h.key] || {};
-        if (!cur.tee) { u[h.key] = { ...cur, tee: ll, learned: false, updatedAt: Date.now() }; save('holes'); toast('ティーを登録。次にグリーンをタップ'); render(); return; }
-        u[h.key] = { ...cur, green: ll, learned: false, updatedAt: Date.now() }; save('holes');
+        if (!cur.tee) { u[h.key] = { ...cur, tee: ll, learned: false, updatedAt: Date.now() }; save('holes'); toast(h.officialY ? `ティーを登録。黄色の円（公式 ${fmt(h.officialY)}${ul()}）の近くのグリーンをタップ` : 'ティーを登録。次にグリーンをタップ'); render(); return; }
+        // a tap near a mapped green uses that green's centre
+        let g = { lat: ll.lat, lon: ll.lon };
+        const ng = features?.greens?.length ? greensNear(features, g, 1)[0] : null;
+        if (ng && ng.d < 30) g = { ...ng.g.c };
+        u[h.key] = { ...cur, green: g, learned: false, updatedAt: Date.now() }; save('holes');
         submitHole(state.course, h.key, u[h.key]);
-        toast(`${h.no}番を登録しました`); rebuild(); return;
+        const len = m2y(dist(cur.tee, g));
+        const off = h.officialY ? Math.abs(len - h.officialY) / h.officialY : 0;
+        toast(`${h.dispNo ?? h.no}番を登録しました（${fmt(len)}${ul()}${off > 0.15 ? '・公式の距離とかなり違います。グリーンを確認してください' : ''}）`, 3500);
+        rebuild();
+        // at home, before the round: go straight on to the next unregistered hole
+        if (!roundActive()) { const next = holes.findIndex((x, i) => i > holeIdx && !x.center); if (next >= 0) { gotoHole(next, true); toast(`次は${holes[next].dispNo ?? holes[next].no}番：ティーをタップ`, 3000); } else toast('全ホールの登録が終わりました！', 3500); }
+        return;
       }
       target = ll; render();
     },
@@ -103,6 +113,13 @@ export function initNavi() {
   $('#btnVoice').onclick = voiceCaddie;
   $('#stGo').onclick = startRound;
   $('#btnScEdit').onclick = openScorecardEditor;
+  $('#btnPreMap').onclick = () => {
+    const i = holes.findIndex((x) => !x.center && x.no <= 100);
+    if (i < 0) { toast('このコースは全ホール登録済みです'); return; }
+    setView('hole'); gotoHole(i, true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast(`${holes[i].dispNo ?? holes[i].no}番から：航空写真でティー → グリーンの順にタップ`, 4000);
+  };
   $('#emTee').onclick = () => { if (!me) { toast('現在地を取得中です。少し待ってから押してください'); return; } if ((meAcc ?? 99) > 25) toast('GPSの精度が低いので、位置が少しずれるかもしれません'); setHolePoint('tee', me, 'tap'); };
   $('#emGreen').onclick = () => { if (!me) { toast('現在地を取得中です。少し待ってから押してください'); return; } setHolePoint('green', me, 'tap'); };
   $('#emSkip').onclick = () => { if (holeIdx + 1 < holes.length) gotoHole(holeIdx + 1, true); };
@@ -544,7 +561,9 @@ function render() {
     hole: h, features, me, acc: meAcc, target, pin, unit: unit() === 'm' ? 'm' : 'yd', hazards: strat?.hazards || [], area, draft,
     arcs: state.ui.arcs === 'clubs' ? state.clubs : null, wind: wx, shots: todaysShots(h),
     slope: view === 'green' ? curSlope : null, heading: compassHeading ?? gpsHeading,
-    emptyText: !state.course ? 'コースを選ぶとホールが表示されます' : draft?.tee ? `${h.no}番のグリーンをタップ` : `${h?.no ?? ''}番は未登録：ティーをタップ（拡大・移動できます）`,
+    ringM: draft?.tee && h?.officialY ? y2m(h.officialY) : null, ringLabel: h?.officialY ? `公式 ${fmt(h.officialY)}${ul()}` : '',
+    areaSpan: draft?.tee && h?.officialY ? Math.max(450, y2m(h.officialY) * 2.4) : 450,
+    emptyText: !state.course ? 'コースを選ぶとホールが表示されます' : draft?.tee ? `${h.dispNo ?? h.no}番：グリーンをタップ${h.officialY ? '（黄色の円が公式の距離）' : ''}` : `${h?.dispNo ?? h?.no ?? ''}番${h?.par ? `（パー${h.par}${h.officialY ? `・${fmt(h.officialY)}${ul()}` : ''}）` : ''}：ティーをタップ（緑の枠は地図にあるグリーン）`,
   });
   if (view === 'map') renderMapOverlay(c);
   renderMappingCard(h);
