@@ -223,6 +223,7 @@ async function createOrJoin() {
 function inviteUrl() {
   const u = new URL(location.href.split('?')[0].split('#')[0]);
   u.searchParams.set('room', active); u.searchParams.set('g', room().name);
+  u.searchParams.set('openExternalBrowser', '1'); // LINE opens it in Safari / Chrome
   return u.toString();
 }
 function invite() {

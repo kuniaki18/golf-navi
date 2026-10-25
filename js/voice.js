@@ -85,6 +85,38 @@ export function caddieScript(d) {
   return s;
 }
 
+// ---------------- which browser are we in ----------------
+/** in-app browsers (LINE, Instagram, …) usually have no speech synthesis; the phone's own browser does */
+export function browserKind(ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  if (/\bLine\//i.test(ua)) return 'line';
+  if (/Instagram/i.test(ua)) return 'instagram';
+  if (/FBAN|FBAV|FB_IAB/i.test(ua)) return 'facebook';
+  if (/Twitter/i.test(ua)) return 'x';
+  if (/Android/i.test(ua) && /; wv\)/.test(ua)) return 'webview';
+  if (/iPhone|iPad|iPod/i.test(ua) && /AppleWebKit/i.test(ua) && !/Safari\//i.test(ua) && !/CriOS|FxiOS|EdgiOS/i.test(ua)) return 'webview';
+  return null;
+}
+export const isIOS = (ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') => /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && typeof document !== 'undefined' && 'ontouchend' in document);
+export const isAndroid = (ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') => /Android/i.test(ua);
+const APP_NAME = { line: 'LINE', instagram: 'Instagram', facebook: 'Facebook', x: 'X', webview: 'アプリ' };
+export const inAppName = (k) => APP_NAME[k] || 'アプリ';
+
+/** a link that leaves the in-app browser, or null when the user has to use the app's menu */
+export function externalBrowserUrl(kind, href, ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  if (!kind) return null;
+  if (kind === 'line') { const u = new URL(href); u.searchParams.set('openExternalBrowser', '1'); return u.toString(); }
+  if (isAndroid(ua)) { const u = new URL(href); return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(href)};end`; }
+  return null;
+}
+
+/** what to do when no sound comes out */
+export function speechHelp(kind, ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  if (kind) return `${inAppName(kind)}の中のブラウザでは音声が出ません。「ブラウザで開く」を押すか、右上（または下）のメニューから「${isIOS(ua) ? 'Safari' : 'ブラウザ'}で開く」を選んでください。`;
+  if (isIOS(ua)) return '音が出ないときは、iPhoneの横のスイッチ（マナーモード）をオフにして、音量を上げてください。それでも出ない場合は「設定」→「アクセシビリティ」→「読み上げコンテンツ」→「声」で日本語の声をダウンロードしてください。';
+  if (isAndroid(ua)) return '音が出ないときは、メディアの音量を上げてください。それでも出ない場合は「設定」→「システム」→「言語と入力」→「テキスト読み上げの出力」で「Google 音声サービス」を選び、日本語の音声データをダウンロードしてください（機種によってメニューの名前が少し違います）。';
+  return '音が出ないときは、音量とパソコンの音声出力を確認してください。Chrome・Edge・Safariの最新版で使えます。';
+}
+
 // ---------------- speech ----------------
 const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
 export const canSpeak = () => !!synth && typeof SpeechSynthesisUtterance !== 'undefined';
@@ -95,15 +127,25 @@ function jaVoice() {
   const vs = synth.getVoices().filter((v) => /^ja/i.test(v.lang));
   return vs.find((v) => /Kyoko|Otoya|Nanami|Google/i.test(v.name)) || vs[0] || null;
 }
-/** read sentences one after another (short utterances avoid browsers cutting long speech off) */
-export function speak(sentences, { rate = 1.05, onEnd } = {}) {
-  if (!canSpeak()) return false;
-  synth.cancel();
+/**
+ * read sentences one after another (short utterances avoid browsers cutting long speech off).
+ * onFail(reason) fires when nothing starts within a few seconds (no voice engine, muted WebView, …).
+ */
+export function speak(sentences, { rate = 1.05, onEnd, onFail } = {}) {
+  if (!canSpeak()) { onFail?.('unsupported'); return false; }
+  // cancel only when something is queued: Safari drops an utterance spoken right after an idle cancel()
+  if (synth.speaking || synth.pending) synth.cancel();
+  try { synth.resume(); } catch {} // Chrome can be left paused after the page was in the background
   const v = jaVoice();
+  let started = false, done = false;
+  const finish = () => { if (done) return; done = true; clearTimeout(watch); onEnd?.(); };
+  const watch = setTimeout(() => { if (!started && !done) { done = true; synth.cancel(); onFail?.('silent'); } }, 4000);
   sentences.forEach((t, i) => {
     const u = new SpeechSynthesisUtterance(t);
-    u.lang = 'ja-JP'; u.rate = rate; if (v) u.voice = v;
-    if (i === sentences.length - 1 && onEnd) { u.onend = onEnd; u.onerror = onEnd; }
+    u.lang = 'ja-JP'; u.rate = rate; u.volume = 1; if (v) u.voice = v;
+    if (i === 0) u.onstart = () => { started = true; };
+    u.onerror = (e) => { if (e.error === 'interrupted' || e.error === 'canceled') return finish(); if (!started) { done = true; clearTimeout(watch); onFail?.(e.error || 'error'); } else finish(); };
+    if (i === sentences.length - 1) u.onend = finish;
     synth.speak(u);
   });
   return true;

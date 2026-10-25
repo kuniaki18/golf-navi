@@ -9,6 +9,7 @@ import { initFeedback } from './feedback.js';
 import { initCourses } from './courses.js';
 import { bundledCourses } from './osm.js';
 import { testKey } from './ai.js';
+import { browserKind, externalBrowserUrl, inAppName } from './voice.js';
 import { initScore, syncCourse } from './score.js';
 import { initTracer } from './tracer.js';
 import { initBooking } from './booking.js';
@@ -30,6 +31,17 @@ function goto(tab) {
   if (tab === 'weather') loadForecast(false);
   if (tab === 'group') onGroupShown();
   if (tab === 'book') openBook();
+}
+
+// in-app browsers (LINE, Instagram, …) lack speech, install and reliable GPS: move to the phone's own browser
+function leaveInAppBrowser() {
+  const kind = browserKind(); if (!kind) return;
+  const url = externalBrowserUrl(kind, location.href);
+  // LINE opens links with openExternalBrowser=1 in Safari / Chrome; do it once (the flag stays in the URL)
+  if (kind === 'line' && url && !new URL(location.href).searchParams.has('openExternalBrowser')) { location.replace(url); return; }
+  const b = $('#inAppBanner'); b.hidden = false;
+  b.innerHTML = `<span>${esc(inAppName(kind))}の中のブラウザで開いています。音声キャディ・ホーム画面への追加は、いつものブラウザ（${/iPhone|iPad/.test(navigator.userAgent) ? 'Safari' : 'Chrome'}）で使えます。</span>${url ? `<a class="btn small primary" href="${esc(url)}">ブラウザで開く</a>` : '<span class="muted">画面のメニュー（…）から「ブラウザで開く」を選んでください</span>'}<button class="btn small" id="inAppClose">閉じる</button>`;
+  $('#inAppClose').onclick = () => (b.hidden = true);
 }
 
 function initAiKey() {
@@ -118,9 +130,11 @@ function initSettings() {
     e.target.value = '';
   };
   const url = location.origin + location.pathname;
+  // opened from LINE, the link goes straight to Safari / Chrome (voice caddie and install work there)
+  const shareUrl = url + '?openExternalBrowser=1';
   $('#appUrl').textContent = url;
-  $('#btnCopyUrl').onclick = () => copyText(url);
-  $('#btnShareApp').onclick = () => shareOrDownload({ title: 'KUNIKUNIゴルフ', text: `ゴルフアプリ「KUNIKUNIゴルフ」。開いて「ホーム画面に追加」でインストールできるよ\n${url}` });
+  $('#btnCopyUrl').onclick = () => copyText(shareUrl);
+  $('#btnShareApp').onclick = () => shareOrDownload({ title: 'KUNIKUNIゴルフ', text: `ゴルフアプリ「KUNIKUNIゴルフ」。開いて「ホーム画面に追加」でインストールできるよ\n${shareUrl}` });
 }
 
 function renderClubs() {
@@ -195,6 +209,7 @@ function boot() {
   initAnalysis(); restoreCoach();
   initWeather();
   initGroup();
+  leaveInAppBrowser();
   courseChip(); refreshCourseName();
   initNavi();
   goto(new URLSearchParams(location.search).get('room') ? 'group' : state.ui.tab || 'navi');

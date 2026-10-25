@@ -66,3 +66,20 @@ test('hazards of the same kind are grouped; lay-up frames the green plan for lat
   assert.match(t, /グリーンを狙うときは、ショートは禁物/);
   assert.doesNotMatch(t, /キャリー\d+ヤード必要/);
 });
+
+test('in-app browsers are detected and get a way out', async () => {
+  const { browserKind, externalBrowserUrl, speechHelp } = await import('../../js/voice.js');
+  const lineIOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/14.3.0';
+  const igAndroid = 'Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 Instagram 300.0';
+  const safari = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+  const chrome = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
+  assert.equal(browserKind(lineIOS), 'line');
+  assert.equal(browserKind(igAndroid), 'instagram');
+  assert.equal(browserKind(safari), null);
+  assert.equal(browserKind(chrome), null);
+  assert.match(externalBrowserUrl('line', 'https://x.example/app/?room=A', lineIOS), /room=A&openExternalBrowser=1$/);
+  assert.match(externalBrowserUrl('instagram', 'https://x.example/app/', igAndroid), /^intent:\/\/x\.example\/app\/#Intent;scheme=https;package=com\.android\.chrome/);
+  assert.match(speechHelp('line', lineIOS), /LINEの中のブラウザでは音声が出ません/);
+  assert.match(speechHelp(null, safari), /マナーモード/);
+  assert.match(speechHelp(null, chrome), /Google 音声サービス/);
+});

@@ -11,7 +11,7 @@ import { analyzeGreen, readPutt, greenCondition } from './greenslope.js';
 import { GpsFilter } from './gpsfilter.js';
 import { greenDistances as greenDist, greenKey } from './geo.js';
 import { submitHole, communityHoles } from './community.js';
-import { caddieScript, speak, canSpeak, speaking, stopSpeaking } from './voice.js';
+import { caddieScript, speak, canSpeak, speaking, stopSpeaking, browserKind, externalBrowserUrl, speechHelp } from './voice.js';
 
 let map, layers, meMarker, accCircle, overlay, mapTiles;
 let hv = null;
@@ -584,9 +584,17 @@ function voiceCaddie() {
   if (speaking()) { stopSpeaking(); setOn(false); return; }
   const lines = caddieScript(voiceInfo());
   const box = $('#voiceText'); box.hidden = false; box.textContent = lines.join('');
-  if (!canSpeak()) { toast('この端末のブラウザは音声読み上げに対応していません。内容を文字で表示しました', 4000); return; }
+  const kind = browserKind();
+  const fail = () => { setOn(false); showVoiceHelp(kind); };
+  if (kind && !canSpeak()) { fail(); return; }
   setOn(true);
-  speak(lines, { rate: Number(state.settings.voiceRate) || 1.05, onEnd: () => setOn(false) });
+  speak(lines, { rate: Number(state.settings.voiceRate) || 1.05, onEnd: () => setOn(false), onFail: fail });
+}
+function showVoiceHelp(kind) {
+  const help = $('#voiceHelp'); help.hidden = false;
+  const url = externalBrowserUrl(kind, location.href);
+  help.innerHTML = `<p>${esc(speechHelp(kind))}</p>${url ? `<a class="btn primary small" href="${esc(url)}">ブラウザで開く</a>` : ''}<button class="btn small" id="voiceHelpClose">閉じる</button>`;
+  $('#voiceHelpClose').onclick = () => (help.hidden = true);
 }
 
 // ---------------- unmapped holes: nearby greens + mapping ----------------
