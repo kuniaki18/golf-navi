@@ -93,3 +93,22 @@ export async function searchPlans({ areaCode, playDate, maxPrice, golfCourseId }
   }
   return out.sort((a, b) => a.price - b.price);
 }
+
+/** the GORA entry for a course of the app's dataset (same place, similar name), with its detail page data */
+export async function goraFor(c) {
+  const core = String(c.name || '').replace(/[（(【].*$/, '').replace(/\s+/g, '');
+  const j = await call('GoraGolfCourseSearch/20170623', { keyword: core.slice(0, 20), hits: 10 });
+  const R = 6371, rad = Math.PI / 180;
+  const km = (a) => { const dLa = (a.lat - c.lat) * rad, dLo = (a.lon - c.lon) * rad; return 2 * R * Math.asin(Math.sqrt(Math.sin(dLa / 2) ** 2 + Math.cos(c.lat * rad) * Math.cos(a.lat * rad) * Math.sin(dLo / 2) ** 2)); };
+  const hit = items(j).map((x) => ({ x, d: km({ lat: Number(x.latitude), lon: Number(x.longitude) }) })).filter((o) => o.d < 4).sort((a, b) => a.d - b.d)[0];
+  if (!hit) return null;
+  const d = items(await call('GoraGolfCourseDetail/20170623', { golfCourseId: hit.x.golfCourseId }))[0] || hit.x;
+  const imgs = [1, 2, 3, 4, 5].map((i) => d[`golfCourseImageUrl${i}`]).filter(Boolean);
+  return {
+    id: d.golfCourseId, name: d.golfCourseName, url: d.golfCourseDetailUrl || hit.x.golfCourseDetailUrl,
+    lat: Number(d.latitude), lon: Number(d.longitude), km: hit.d,
+    images: imgs.length ? imgs : [hit.x.golfCourseImageUrl].filter(Boolean),
+    facts: [d.holeCount && `${d.holeCount}ホール`, d.parCount && `パー${d.parCount}`, d.courseDistance && `${Number(d.courseDistance).toLocaleString()}ヤード`, d.courseType, d.designer && `設計 ${d.designer}`, d.green && `グリーン ${d.green}`].filter(Boolean),
+    caption: d.golfCourseCaption || '',
+  };
+}

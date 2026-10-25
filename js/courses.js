@@ -2,7 +2,7 @@
 import { $, esc, toast, dist, PREFS } from './util.js';
 import { state, save } from './store.js';
 import { bundledCourses, bundleInfo, searchCourses, coursesNear } from './osm.js';
-import { searchCourses as goraSearch, hasGora } from './gora.js';
+import { searchCourses as goraSearch, hasGora, goraFor } from './gora.js';
 import { driveEstimate, fmtMinutes, geocode } from './travel.js';
 import { aerialTiles, wikiInfo } from './coursephotos.js';
 
@@ -169,7 +169,8 @@ async function showInfo(c, i) {
   box.hidden = false;
   const a = aerialTiles(c);
   box.innerHTML = `<div class="ci-aerial" aria-label="コース全体の航空写真">${a.tiles.map((u) => `<img src="${u}" alt="" loading="lazy">`).join('')}</div>
-    <p class="muted credit">航空写真：国土地理院（シームレス空中写真）</p><div class="ci-wiki muted">紹介を探しています…</div>`;
+    <p class="muted credit">航空写真：国土地理院（シームレス空中写真）</p><div class="ci-gora"></div><div class="ci-wiki muted">紹介を探しています…</div>`;
+  showGora(c, box.querySelector('.ci-gora'));
   const w = await wikiInfo(c.name);
   const el = box.querySelector('.ci-wiki');
   if (!w) { el.textContent = 'このゴルフ場のWikipediaの記事は見つかりませんでした。'; return; }
@@ -202,4 +203,17 @@ function initOrigins() {
   };
   $('#originList').onclick = (e) => { const b = e.target.closest('[data-odel]'); if (!b) return; origins().splice(Number(b.dataset.odel), 1); save('settings'); renderList(); run(); };
   renderList();
+}
+
+/** 楽天GORA (official API, with the player's own app ID): photos and basic facts */
+async function showGora(c, el) {
+  if (!hasGora()) { el.innerHTML = '<p class="muted credit">設定で楽天のアプリIDを入れると、楽天GORAのコース写真と情報も表示します。</p>'; return; }
+  el.innerHTML = '<p class="muted">楽天GORAで探しています…</p>';
+  try {
+    const g = await goraFor(c);
+    if (!g) { el.innerHTML = '<p class="muted credit">楽天GORAに同じゴルフ場が見つかりませんでした。</p>'; return; }
+    el.innerHTML = `${g.images.length ? `<div class="ci-gora-imgs">${g.images.map((u) => `<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>` : ''}
+      ${g.facts.length ? `<p><b>${esc(g.facts.join(' · '))}</b></p>` : ''}${g.caption ? `<p>${esc(g.caption)}</p>` : ''}
+      <p class="muted credit">写真・情報：<a class="link" href="${esc(g.url)}" target="_blank" rel="noopener">楽天GORA「${esc(g.name)}」</a> · Supported by Rakuten Developers</p>`;
+  } catch (e) { el.innerHTML = `<p class="muted credit">${esc(e.message)}</p>`; }
 }

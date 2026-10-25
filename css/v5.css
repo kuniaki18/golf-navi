@@ -217,3 +217,5 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .sc-grid select, .sc-grid input { min-height: 36px; padding: 4px 6px; font-size: .95rem; }
 .sc-err { color: var(--danger); font-size: .85rem; margin: 0 0 8px; padding-left: 1.2em; }
 .sc-err:empty { display: none; }
+.learn-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; font-size: .9rem; }
+.ci-gora-imgs { display: flex; gap: 6px; overflow-x: auto; scroll-snap-type: x mandatory; } .ci-gora-imgs img { height: 140px; border-radius: 12px; scroll-snap-align: start; flex: none; } .ci-gora p { margin: 4px 0; font-size: .88rem; }

@@ -12,6 +12,7 @@ import { GpsFilter } from './gpsfilter.js';
 import { greenDistances as greenDist, greenKey } from './geo.js';
 import { submitHole, communityHoles, communityDoc, submitScorecard } from './community.js';
 import { dataQuality, checkScorecard } from './coursedata.js';
+import { learnHoles } from './learn.js';
 import { ninesOf, defaultPlan, planHoles, planPars, scRow } from './round.js';
 import { beginRound } from './score.js';
 import { caddieScript, speak, canSpeak, speaking, stopSpeaking, browserKind, externalBrowserUrl, speechHelp } from './voice.js';
@@ -99,6 +100,8 @@ export function initNavi() {
   $('#btnVoice').onclick = voiceCaddie;
   $('#stGo').onclick = startRound;
   $('#btnScEdit').onclick = openScorecardEditor;
+  $('#learnOk').onclick = applyLearned;
+  $('#learnNo').onclick = () => { pendingLearn = null; $('#learnDlg').close(); };
   $('#scEditSave').onclick = saveScorecardEditor;
   $('#scEditCancel').onclick = () => $('#scEditDlg').close();
   $('#scEditClear').onclick = clearMyScorecard;
@@ -485,6 +488,11 @@ export function gotoHole(i, fit) {
   if (fit) { hv.resetView(); fitMap(); }
   render();
   window.dispatchEvent(new CustomEvent('navi-hole', { detail: { no: h.no, idx: h.roundIdx, par: h.parEst ? null : h.par } }));
+  // when each hole started (to learn tee / green positions from the walked track after the round)
+  if (roundActive() && h.roundIdx != null) {
+    const r = state.current, log = (r.holeLog ??= []);
+    if (log[log.length - 1]?.[0] !== h.roundIdx) { log.push([h.roundIdx, Math.round((Date.now() - (r.started || Date.now())) / 1000)]); save('round'); }
+  }
   renderRoundBar();
 }
 
@@ -722,10 +730,31 @@ function endRound() {
     return;
   }
   const r = state.current;
+  const learned = learnHoles(r.track, r.holeLog, holes);
   if (r.holes.some((h) => h.strokes) && !r.saved) $('#btnSaveRound').click();
   r.ended = true; save('round');
   rebuild();
   window.dispatchEvent(new CustomEvent('goto-tab', { detail: 'score' }));
+  if (learned.length) offerLearned(learned);
+}
+let pendingLearn = null;
+/** after the round: show what the walked track says about tee / green positions, and save only what the player ticks */
+function offerLearned(list) {
+  pendingLearn = { courseId: cid(), list };
+  const name = (s0) => { const h = allHoles.find((x) => x.key === s0.key); const p = state.current?.plan; const nine = p?.[s0.roundIdx < 9 ? 'front' : 'back']; return `${nine ? nine.short + ' ' : ''}${(nine?.sc != null ? s0.roundIdx % 9 + 1 : h?.no) ?? s0.key}番`; };
+  $('#learnList').innerHTML = list.map((s0, i) => `<label class="check"><input type="checkbox" data-l="${i}" checked> <span><b>${esc(name(s0))}</b>：ティー→グリーン 約${Math.round(m2y(s0.lengthM))}y${s0.moveGreen != null ? `（今のグリーン位置から${s0.moveGreen}m）` : '（未登録だったホール）'}</span></label>`).join('');
+  $('#learnDlg').showModal();
+}
+function applyLearned() {
+  const p = pendingLearn; $('#learnDlg').close(); pendingLearn = null;
+  if (!p || p.courseId !== cid()) return;
+  const u = userHoles(); let n = 0;
+  p.list.forEach((s0, i) => {
+    if (!$(`#learnList [data-l="${i}"]`)?.checked) return;
+    u[s0.key] = { ...(u[s0.key] || {}), tee: s0.tee, green: s0.green, learned: true, updatedAt: Date.now() };
+    submitHole(state.course, s0.key, u[s0.key]); n++;
+  });
+  if (n) { save('holes'); rebuild(); toast(`${n}ホールの位置を、歩いた記録から登録しました`); }
 }
 function renderRoundBar() {
   const bar = $('#roundBar'); if (!bar) return;

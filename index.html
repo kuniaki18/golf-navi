@@ -655,6 +655,12 @@
   <button class="btn small" id="btnInstallClose">閉じる</button>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
+<dialog class="ai-need" id="learnDlg">
+  <h2>ホールの位置を記録から登録しますか？</h2>
+  <p class="muted">今日歩いたGPSの記録で、ティーで立ち止まった場所とグリーンで長く止まった場所を見つけました。地図からの推定や未登録だったホールだけが対象で、地図に載っているホールは変えません。登録すると「みんなの地図」にも送られます（設定でオフにできます）。違うと思うホールはチェックを外してください。</p>
+  <div class="learn-list" id="learnList"></div>
+  <div class="btn-row"><button class="btn primary" id="learnOk">チェックしたホールを登録</button><button class="btn" id="learnNo">登録しない</button></div>
+</dialog>
 <dialog class="ai-need sc-edit" id="scEditDlg">
   <h2>スコアカード（パー・ヤード）</h2>
   <p class="muted">ゴルフ場のスコアカードや公式サイトを見ながら入力してください。ヤードはレギュラーティー、バックは分かる場合だけ。保存すると、このコースのパーと距離の表示に使い、「みんなの地図」で他の人にも共有します（設定でオフにできます）。</p>
