@@ -219,3 +219,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .sc-err:empty { display: none; }
 .learn-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; font-size: .9rem; }
 .ci-gora-imgs { display: flex; gap: 6px; overflow-x: auto; scroll-snap-type: x mandatory; } .ci-gora-imgs img { height: 140px; border-radius: 12px; scroll-snap-align: start; flex: none; } .ci-gora p { margin: 4px 0; font-size: .88rem; }
+
+/* pre-round briefing */
+.brief-btn { min-height: 52px; border-radius: 16px; gap: 8px; font-weight: 700; }
+.brief-btn svg { width: 22px; height: 22px; }
+.brief-card h3 { font-size: .95rem; margin: 10px 0 4px; }
+.brief-practice { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; font-size: .9rem; }
+.brief-date { flex-direction: row; align-items: center; gap: 6px; }
+.brief-date input { width: auto; }
+.brief-card details p { font-size: .85rem; line-height: 1.8; }

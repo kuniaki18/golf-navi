@@ -13,6 +13,8 @@ import { greenDistances as greenDist, greenKey } from './geo.js';
 import { submitHole, communityHoles, communityDoc, submitScorecard } from './community.js';
 import { dataQuality, checkScorecard } from './coursedata.js';
 import { learnHoles } from './learn.js';
+import { briefingScript } from './briefing.js';
+import { computeStats } from './analysis.js';
 import { ninesOf, defaultPlan, planHoles, planPars, scRow } from './round.js';
 import { beginRound } from './score.js';
 import { caddieScript, speak, canSpeak, speaking, stopSpeaking, browserKind, externalBrowserUrl, speechHelp } from './voice.js';
@@ -100,6 +102,9 @@ export function initNavi() {
   $('#btnVoice').onclick = voiceCaddie;
   $('#stGo').onclick = startRound;
   $('#btnScEdit').onclick = openScorecardEditor;
+  $('#briefPlay').onclick = () => speakBriefing(briefingScript(briefingInfo()).sentences);
+  $('#briefClose').onclick = () => { stopSpeaking(); $('#briefCard').hidden = true; };
+  $('#briefDate').onchange = () => { (state.ui.playDate ??= {})[cid()] = $('#briefDate').value || undefined; save('ui'); openBriefing(false); };
   $('#learnOk').onclick = applyLearned;
   $('#learnNo').onclick = () => { pendingLearn = null; $('#learnDlg').close(); };
   $('#scEditSave').onclick = saveScorecardEditor;
@@ -672,6 +677,48 @@ function clearMyScorecard() {
   delete state.scorecards[cid()]; save('scorecard'); $('#scEditDlg').close(); pickScorecard(); rebuild(); toast('あなたの入力を消して、元のデータに戻しました');
 }
 
+// ---------------- 事前ブリーフィング (before the play date) ----------------
+/** the holes of the usual round (first two nines) described for the briefing, from the same data the navi uses */
+function briefingInfo() {
+  const nines = ninesOf(allHoles, courseName, scorecard);
+  const plan = defaultPlan(nines);
+  const ph = plan.front ? planHoles(allHoles, plan) : [];
+  for (const h of ph) { if (h.scIdx == null) continue; const sc = scRow(h, scorecard); if (sc) { h.par = sc.par; h.officialY = sc.yd; } }
+  const holesOut = ph.filter((h) => h.center || h.officialY).map((h) => {
+    const st = h.center && features ? holeStrategy({ ...h, center: holeCenter(h) }, features, state.clubs) : null;
+    const hz = st?.hazards || [];
+    const lenY = h.officialY || (h.lengthM ? m2y(h.lengthM) : 0);
+    const water = hz.filter((x) => x.type === 'water' && Math.abs(x.latY) < 25);
+    // a carry only counts for water across the line in front of the green that a shot from the tee has to fly over
+    const carries = water.filter((x) => Math.abs(x.latY) < 15).map((x) => x.alongY + m2y(x.size || 0)).filter((c) => c > 30 && c < lenY - 10 && (h.par === 3 || c <= 250));
+    const front = carries.length ? Math.max(...carries) : null;
+    return {
+      label: `${h.nineName && nines.length > 2 ? h.nineName + ' ' : ''}${h.dispNo ?? h.no}番`, par: h.par || st?.par, lengthY: Math.round(h.officialY || (h.lengthM ? m2y(h.lengthM) : 0)),
+      water: water.length > 0, waterCarry: front ? Math.round(front) : null,
+      greenBunkers: hz.filter((x) => x.nearGreen && x.type === 'bunker').length, dogleg: !!st?.doglegs?.length,
+      shallowGreen: st?.shape ? st.shape.depth < 25 : false, narrowGreen: st?.shape ? st.shape.width < 22 : false, est: h.source === 'est',
+    };
+  });
+  return { courseName: state.course.name, nines: plan.front ? [plan.front.short, plan.back?.short].filter(Boolean) : null, holes: holesOut, clubs: state.clubs, stats: computeStats(), playDate: (state.ui.playDate || {})[cid()] || null, today: new Date().toISOString().slice(0, 10) };
+}
+function openBriefing(play) {
+  if (!state.course) return;
+  const card = $('#briefCard'); card.hidden = false;
+  $('#briefDate').value = (state.ui.playDate || {})[cid()] || '';
+  const r = briefingScript(briefingInfo());
+  $('#briefBody').innerHTML = `${r.keyHoles.length ? `<h3>注意するホール</h3><ul class="tips">${r.keyHoles.map((k) => `<li>${esc(k)}</li>`).join('')}</ul>` : ''}
+    <h3>プレー日までの練習</h3><ol class="brief-practice">${r.practice.map((p) => `<li>${esc(p)}</li>`).join('')}</ol>
+    <details><summary>読み上げる全文</summary><p>${esc(r.sentences.join(''))}</p></details>`;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (play) speakBriefing(r.sentences);
+}
+function speakBriefing(lines) {
+  const b = $('#briefPlay');
+  if (speaking()) { stopSpeaking(); b.textContent = '▶ 音声で聞く'; return; }
+  b.textContent = '■ 止める';
+  speak(lines, { rate: Number(state.settings.voiceRate) || 1.05, onEnd: () => (b.textContent = '▶ 音声で聞く'), onFail: () => { b.textContent = '▶ 音声で聞く'; showVoiceHelp(browserKind()); } });
+}
+
 // ---------------- round: プレー開始 ----------------
 function roundActive() { const r = state.current; return !!(r?.plan && !r.ended && cid() && r.courseId === cid()); }
 let startMode = 'new';
@@ -762,8 +809,9 @@ function renderRoundBar() {
   bar.hidden = false;
   if (!roundActive()) {
     bar.className = 'round-bar idle';
-    bar.innerHTML = `<button class="btn primary play-btn" id="btnPlay"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8Z"/></svg>プレー開始</button><span class="muted">回るコース（前半・後半）とティーを選んでスタート</span>`;
+    bar.innerHTML = `<button class="btn primary play-btn" id="btnPlay"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8Z"/></svg>プレー開始</button><button class="btn brief-btn" id="btnBrief"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>事前ブリーフィング</button><span class="muted">プレー前に練習と攻め方を音声で確認・当日は回るコースを選んでスタート</span>`;
     $('#btnPlay').onclick = () => openStartRound('new');
+    $('#btnBrief').onclick = () => openBriefing(true);
     return;
   }
   const r = state.current, p = r.plan;

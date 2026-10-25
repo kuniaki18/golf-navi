@@ -38,6 +38,12 @@
 <div class="inapp-banner" id="inAppBanner" role="alert" hidden></div>
 <section class="tab" id="tab-navi" data-tab="navi">
   <div class="round-bar" id="roundBar" hidden></div>
+  <div class="card brief-card" id="briefCard" hidden>
+    <div class="card-head"><h2>事前ブリーフィング</h2><button class="btn small" id="briefClose">閉じる</button></div>
+    <p class="muted">このコースのデータとあなたの成績から、プレー日までの練習と攻め方をまとめました（コースデータが推定のホールは目安です）。</p>
+    <div class="btn-row"><button class="btn primary" id="briefPlay">▶ 音声で聞く</button><label class="brief-date">プレー日<input type="date" id="briefDate"></label></div>
+    <div id="briefBody"></div>
+  </div>
   <div class="hole-bar">
     <button class="step" id="holePrev" aria-label="前のホール">‹</button>
     <div class="hole-info">

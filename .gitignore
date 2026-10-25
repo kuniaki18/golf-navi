@@ -3,3 +3,4 @@
 tools/node_modules/
 tools/japan-pref.geojson
 *.osm.pbf
+tools/.cache/
