@@ -509,6 +509,8 @@ if (fs.existsSync(WD)) {
 }
 index.sort((a, b) => (a.p || '').localeCompare(b.p || '', 'ja') || a.n.localeCompare(b.n, 'ja'));
 const stamp = new Date().toISOString().slice(0, 10);
+// hand-fixed display names (tools/name-fix.json)
+{ const fix = JSON.parse(fs.readFileSync(new URL('./name-fix.json', import.meta.url), 'utf8')); for (const c of index) if (fix[c.id]) Object.assign(c, fix[c.id]); }
 fs.writeFileSync(`${OUT_DIR}/courses-jp.json`, JSON.stringify({ source: '© OpenStreetMap contributors (ODbL)', generatedAt: stamp, count: index.length, withHoles, courses: index }));
 log(`DONE courses=${index.length} withHoleData=${withHoles} withDetail=${index.filter((x) => x.d).length} detailMB=${(detailBytes / 1e6).toFixed(1)}`);
 const byPref = {}; for (const c of index) byPref[c.p] = (byPref[c.p] || 0) + 1;

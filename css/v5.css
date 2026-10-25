@@ -138,3 +138,15 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .voice-text { margin: -4px 4px 0; font-size: .85rem; color: var(--muted); line-height: 1.7; }
 @keyframes voicePulse { 50% { box-shadow: 0 0 0 8px rgba(246, 194, 58, .25); } }
 @media (prefers-reduced-motion: reduce) { .voice-btn.on { animation: none; } }
+
+/* header: long course names wrap onto two lines instead of being cut off */
+.course-chip { white-space: normal; text-overflow: clip; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  line-height: 1.25; font-size: .8rem; padding: 5px 12px; border-radius: 14px; min-height: 34px; word-break: break-word; overflow-wrap: anywhere; }
+@media (max-width: 420px) {
+  .topbar { gap: 6px; }
+  .brand { font-size: 1.08rem; gap: 4px; }
+  .brand small { display: none; }
+  .brand svg { width: 20px; height: 20px; }
+  .icon-btn { padding: 2px; }
+  .course-chip { font-size: .76rem; padding: 4px 10px; }
+}

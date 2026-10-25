@@ -7,6 +7,7 @@ import { initMemory, openMemory } from './memory.js';
 import { maybeOnboard } from './onboard.js';
 import { initFeedback } from './feedback.js';
 import { initCourses } from './courses.js';
+import { bundledCourses } from './osm.js';
 import { initScore, syncCourse } from './score.js';
 import { initTracer } from './tracer.js';
 import { initBooking } from './booking.js';
@@ -31,7 +32,17 @@ function goto(tab) {
 }
 
 function courseChip() {
-  $('#courseChip').textContent = state.course ? state.course.name : 'コースを選ぶ';
+  const el = $('#courseChip');
+  el.textContent = state.course ? state.course.name : 'コースを選ぶ';
+  el.title = el.textContent;
+}
+// a course picked before its name was corrected in the data keeps the new name
+async function refreshCourseName() {
+  if (!state.course?.id) return;
+  try {
+    const c = (await bundledCourses()).find((x) => x.id === state.course.id);
+    if (c?.name && c.name !== state.course.name) { state.course.name = c.name; save('course'); courseChip(); }
+  } catch {}
 }
 
 // ---------------- settings ----------------
@@ -162,7 +173,7 @@ function boot() {
   initAnalysis(); restoreCoach();
   initWeather();
   initGroup();
-  courseChip();
+  courseChip(); refreshCourseName();
   initNavi();
   goto(new URLSearchParams(location.search).get('room') ? 'group' : state.ui.tab || 'navi');
   maybeOnboard(() => { refreshNavi(); renderAnalysis(); fillShotClubs(); renderClubs(); $('#targetScore').value = state.settings.targetScore; toast('準備ができました。コースを選ぶか、コースに着くと自動で案内します', 4000); });
