@@ -413,7 +413,9 @@ export async function loadCourse(force) {
   }
   const cacheId = c.osmId || c.id;
   const cached = !force && getCourseCache(cacheId);
-  if (cached && Date.now() - cached.savedAt < 7 * 864e5) features = cached.features;
+  // the week-long cache is for data fetched live from the map server; data shipped with the app is read fresh each
+  // time (it is small, and the service worker keeps a copy for weak signal) so updated holes show up straight away
+  if (cached && cached.features?.source !== 'bundle' && Date.now() - cached.savedAt < 7 * 864e5) features = cached.features;
   else {
     $('#holeTips').innerHTML = '<li class="muted">コースデータを読み込み中…</li>';
     try {
