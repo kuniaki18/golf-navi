@@ -25,3 +25,12 @@ test('scorecard check: accepts a normal card, rejects typos', () => {
   assert.ok(bad.errors.some((e) => /パーは3〜6/.test(e)));
   assert.equal(checkScorecard({ courses: [{ name: 'x', holes: nine([4, 4, 4, 4, 4, 4, 4, 4, 4]).slice(0, 8) }] }).ok, false);
 });
+
+test('scorecard check: ladies tee yardage is kept and must not exceed the regular tee', () => {
+  const nine = Array.from({ length: 9 }, () => ({ par: 4, yd: 360, ladies: 300 }));
+  const ok = checkScorecard({ courses: [{ name: 'OUT', holes: nine }] });
+  assert.ok(ok.ok, ok.errors.join());
+  assert.equal(ok.card.courses[0].holes[0].ladies, 300);
+  const bad = checkScorecard({ courses: [{ name: 'OUT', holes: nine.map((h, i) => (i ? h : { ...h, ladies: 400 })) }] });
+  assert.ok(bad.errors.some((e) => /レディースティーはレギュラー以下/.test(e)));
+});

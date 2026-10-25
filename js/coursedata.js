@@ -38,13 +38,16 @@ export function checkScorecard(card) {
   const courses = (card?.courses || []).slice(0, 4).map((c, k) => {
     const holes = (c.holes || []).map((h, i) => {
       const par = Number(h.par), yd = Number(h.yd), back = h.back === '' || h.back == null ? null : Number(h.back);
+      const ladies = h.ladies === '' || h.ladies == null ? null : Number(h.ladies);
+      if (ladies != null && !(ladies >= 40 && ladies <= yd)) errors.push(`${c.name || 'コース' + (k + 1)} ${i + 1}番：レディースティーはレギュラー以下のヤードで入れてください`);
       if (![3, 4, 5, 6].includes(par)) errors.push(`${c.name || 'コース' + (k + 1)} ${i + 1}番：パーは3〜6で入れてください`);
       if (!(yd >= 50 && yd <= 700)) errors.push(`${c.name || 'コース' + (k + 1)} ${i + 1}番：ヤードは50〜700で入れてください`);
       if (back != null && !(back >= yd && back <= 750)) errors.push(`${c.name || 'コース' + (k + 1)} ${i + 1}番：バックティーはレギュラー以上のヤードで入れてください`);
       // par vs length sanity (typical ranges; generous so unusual holes still pass)
       if (par === 3 && yd > 290) errors.push(`${c.name || 'コース' + (k + 1)} ${i + 1}番：パー3で${yd}ヤードは長すぎます。入力を確認してください`);
       if (par === 5 && yd < 380) errors.push(`${c.name || 'コース' + (k + 1)} ${i + 1}番：パー5で${yd}ヤードは短すぎます。入力を確認してください`);
-      return back != null ? { par, yd, back } : { par, yd };
+      const o = { par, yd }; if (back != null) o.back = back; if (ladies != null) o.ladies = ladies;
+      return o;
     });
     if (![9, 18].includes(holes.length)) errors.push(`${c.name || 'コース' + (k + 1)}：ホール数は9か18です`);
     return { name: String(c.name || '').trim().slice(0, 12), holes };

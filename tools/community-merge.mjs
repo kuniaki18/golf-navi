@@ -28,11 +28,11 @@ for (const line of lines) {
   if (s.t === 'sc') {
     // scorecard: 1–4 courses of 9 / 18 holes, par 3–6, 50–700 y
     const cs = Array.isArray(s.courses) ? s.courses.slice(0, 4) : [];
-    const valid = c && cs.length && cs.every((k) => Array.isArray(k.holes) && [9, 18].includes(k.holes.length) && k.holes.every((h) => [3, 4, 5, 6].includes(h.par) && h.yd >= 50 && h.yd <= 700 && (h.back == null || (h.back >= h.yd && h.back <= 750))));
+    const valid = c && cs.length && cs.every((k) => Array.isArray(k.holes) && [9, 18].includes(k.holes.length) && k.holes.every((h) => [3, 4, 5, 6].includes(h.par) && h.yd >= 50 && h.yd <= 700 && (h.back == null || (h.back >= h.yd && h.back <= 750)) && (h.ladies == null || (h.ladies >= 40 && h.ladies <= h.yd))));
     if (!valid) { rejected++; continue; }
     const f = `data/community/${s.courseId}.json`;
     const doc = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : { courseId: s.courseId, name: c.n, subs: {} };
-    (doc.scSubs ??= {})[s.by] = { courses: cs.map((k) => ({ name: String(k.name || '').slice(0, 12), holes: k.holes.map((h) => (h.back != null ? { par: h.par, yd: h.yd, back: h.back } : { par: h.par, yd: h.yd })) })), at: s.at };
+    (doc.scSubs ??= {})[s.by] = { courses: cs.map((k) => ({ name: String(k.name || '').slice(0, 12), holes: k.holes.map((h) => ({ par: h.par, yd: h.yd, ...(h.back != null ? { back: h.back } : {}), ...(h.ladies != null ? { ladies: h.ladies } : {}) })) })), at: s.at };
     fs.mkdirSync('data/community', { recursive: true });
     fs.writeFileSync(f, JSON.stringify(doc));
     touched.add(f); accepted++;

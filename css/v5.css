@@ -211,7 +211,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .sc-block { border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px 10px; margin: 0 0 10px; }
 .sc-block legend { padding: 0 4px; }
 .sc-name { width: 12em; min-height: 34px; font-weight: 700; }
-.sc-grid { display: grid; grid-template-columns: 2em 1fr 1.3fr 1.3fr; gap: 4px 6px; align-items: center; }
+.sc-grid { display: grid; grid-template-columns: 2em 1fr 1.2fr 1.2fr 1.2fr; gap: 4px 6px; align-items: center; }
 .sc-grid .hd { font-size: .72rem; color: var(--muted); }
 .sc-grid .no { font: 700 1rem/1 var(--display); text-align: center; }
 .sc-grid select, .sc-grid input { min-height: 36px; padding: 4px 6px; font-size: .95rem; }

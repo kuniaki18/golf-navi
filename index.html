@@ -669,7 +669,7 @@
 </dialog>
 <dialog class="ai-need sc-edit" id="scEditDlg">
   <h2>スコアカード（パー・ヤード）</h2>
-  <p class="muted">ゴルフ場のスコアカードや公式サイトを見ながら入力してください。ヤードはレギュラーティー、バックは分かる場合だけ。保存すると、このコースのパーと距離の表示に使い、「みんなの地図」で他の人にも共有します（設定でオフにできます）。</p>
+  <p class="muted">ゴルフ場のスコアカードや公式サイトを見ながら入力してください。ヤードはレギュラーティー、バックとレディースは分かる場合だけ。保存すると、このコースのパーと距離の表示に使い、「みんなの地図」で他の人にも共有します（設定でオフにできます）。</p>
   <div id="scEditBody"></div>
   <ul class="sc-err" id="scEditErr" role="alert"></ul>
   <div class="btn-row"><button class="btn primary" id="scEditSave">保存</button><button class="btn" id="scEditCancel">やめる</button><button class="btn" id="scEditClear">自分の入力を消す</button></div>
@@ -679,7 +679,8 @@
   <p class="muted" id="stCourse"></p>
   <label>前半（アウト）<select id="stFront"></select></label>
   <label>後半（イン）<select id="stBack"></select></label>
-  <label id="stTeeWrap">ティー<div class="seg" id="stTee"><button data-v="regular" class="on">レギュラー</button><button data-v="back">バック</button></div></label>
+  <label id="stTeeWrap">ティー<div class="seg" id="stTee"><button data-v="back">バック</button><button data-v="regular" class="on">レギュラー</button><button data-v="front">フロント</button><button data-v="ladies">レディース</button></div></label>
+  <p class="muted" id="stTeeNote"></p>
   <label id="stPlayersWrap">同伴者（任意・スペース区切り）<input id="stPlayers" placeholder="例: たろう はなこ" autocomplete="off"></label>
   <p class="muted" id="stNote"></p>
   <div class="btn-row"><button class="btn primary" id="stGo">▶ スタート</button><button class="btn" id="stCancel">やめる</button></div>

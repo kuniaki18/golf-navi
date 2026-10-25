@@ -111,7 +111,7 @@ export function initNavi() {
   $('#scEditCancel').onclick = () => $('#scEditDlg').close();
   $('#scEditClear').onclick = clearMyScorecard;
   $('#stCancel').onclick = () => $('#startDlg').close();
-  $('#stTee').onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) $$('#stTee button').forEach((x) => x.classList.toggle('on', x === b)); };
+  $('#stTee').onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) { $$('#stTee button').forEach((x) => x.classList.toggle('on', x === b)); startTeeNote(); } };
   window.addEventListener('round-changed', renderRoundBar);
   $('#btnVoiceMap').onclick = voiceCaddie;
   // flyover (like a 3D hole preview): glide from the tee to the green over the aerial photo
@@ -431,14 +431,16 @@ function rebuild(first) {
   }
   // official scorecard: par and yardage by course / hole number
   // only for holes whose number is known (mapped, registered or confirmed with 番号修正) — never for an estimated number
-  const back = roundActive() && state.current.plan.tee === 'back';
-  for (const h of allHoles) { if (h.source === 'est') continue; const sc = scorecard?.courses?.[h.set || 0]?.holes?.[h.no - 1]; if (sc) { h.par = sc.par; h.parEst = false; h.officialY = back ? sc.back || sc.yd : sc.yd; } }
+  // yardage of the tee being played (falls back to the regular tee when the scorecard has no number for it)
+  const tee = roundActive() ? state.current.plan.tee || 'regular' : 'regular';
+  const ydOf = (sc) => (tee === 'back' ? sc.back : tee === 'ladies' ? sc.ladies : tee === 'front' ? sc.front : null) || sc.yd;
+  for (const h of allHoles) { if (h.source === 'est') continue; const sc = scorecard?.courses?.[h.set || 0]?.holes?.[h.no - 1]; if (sc) { h.par = sc.par; h.parEst = false; h.officialY = ydOf(sc); } }
   const sets = [...new Set(allHoles.map((h) => h.set || 0))].sort((a, b) => a - b);
   if (!sets.includes(activeSet())) setSet(0, false);
   // during a started round the holes follow the plan (front nine → back nine); otherwise one course at a time
   holes = roundActive() ? planHoles(allHoles, state.current.plan) : allHoles.filter((h) => (h.set || 0) === activeSet());
   // official course of a 27-hole club played on map holes: par / yardage from that course's scorecard row
-  for (const h of holes) { if (h.scIdx == null) continue; const sc = scRow(h, scorecard); if (sc) { h.par = sc.par; h.parEst = false; h.officialY = back ? sc.back || sc.yd : sc.yd; } }
+  for (const h of holes) { if (h.scIdx == null) continue; const sc = scRow(h, scorecard); if (sc) { h.par = sc.par; h.parEst = false; h.officialY = ydOf(sc); } }
   holeIdx = Math.max(0, holes.findIndex((h) => h.key === keep));
   const btn = $('#setBtn');
   btn.hidden = sets.length < 2 || roundActive();
@@ -656,8 +658,8 @@ function openScorecardEditor() {
   const parSel = (v, c, i) => `<select data-c="${c}" data-i="${i}" data-f="par" aria-label="パー"><option value=""></option>${[3, 4, 5, 6].map((p) => `<option ${Number(v) === p ? 'selected' : ''}>${p}</option>`).join('')}</select>`;
   const num = (v, c, i, fld, ph) => `<input data-c="${c}" data-i="${i}" data-f="${fld}" type="number" inputmode="numeric" min="50" max="750" value="${v ?? ''}" placeholder="${ph}" aria-label="${ph}">`;
   $('#scEditBody').innerHTML = d.courses.map((c, k) => `<fieldset class="sc-block"><legend><input class="sc-name" data-c="${k}" data-f="name" value="${esc(c.name || '')}" placeholder="コース名（例: 東）" aria-label="コース名"></legend>
-    <div class="sc-grid"><span class="hd">番</span><span class="hd">パー</span><span class="hd">ヤード</span><span class="hd">バック</span>
-    ${c.holes.map((h, i) => `<span class="no">${i + 1}</span>${parSel(h.par, k, i)}${num(h.yd, k, i, 'yd', 'ヤード')}${num(h.back, k, i, 'back', '任意')}`).join('')}</div></fieldset>`).join('');
+    <div class="sc-grid"><span class="hd">番</span><span class="hd">パー</span><span class="hd">ヤード</span><span class="hd">バック</span><span class="hd">レディース</span>
+    ${c.holes.map((h, i) => `<span class="no">${i + 1}</span>${parSel(h.par, k, i)}${num(h.yd, k, i, 'yd', 'ヤード')}${num(h.back, k, i, 'back', '任意')}${num(h.ladies, k, i, 'ladies', '任意')}`).join('')}</div></fieldset>`).join('');
   $('#scEditErr').textContent = '';
   $('#scEditDlg').showModal();
   $('#scEditDlg').dataset.shape = JSON.stringify(d.courses.map((c) => c.holes.length));
@@ -666,7 +668,7 @@ function saveScorecardEditor() {
   const shape = JSON.parse($('#scEditDlg').dataset.shape || '[]');
   const card = { courses: shape.map((n, k) => ({ name: $(`.sc-name[data-c="${k}"]`).value, holes: Array.from({ length: n }, (_, i) => {
     const v = (fld) => $(`#scEditBody [data-c="${k}"][data-i="${i}"][data-f="${fld}"]`).value;
-    return { par: v('par'), yd: v('yd'), back: v('back') };
+    return { par: v('par'), yd: v('yd'), back: v('back'), ladies: v('ladies') };
   }) })) };
   const r = checkScorecard(card);
   if (!r.ok) { $('#scEditErr').innerHTML = r.errors.slice(0, 6).map((e) => `<li>${esc(e)}</li>`).join('') + (r.errors.length > 6 ? `<li>ほか${r.errors.length - 6}件</li>` : ''); return; }
@@ -726,6 +728,7 @@ function speakBriefing(lines) {
 // ---------------- round: プレー開始 ----------------
 function roundActive() { const r = state.current; return !!(r?.plan && !r.ended && cid() && r.courseId === cid()); }
 let startMode = 'new';
+let startTeeNote = () => {};
 export function openStartRound(mode = 'new') {
   if (!state.course) { toast('先にコースを選んでください'); return; }
   startMode = mode;
@@ -735,8 +738,13 @@ export function openStartRound(mode = 'new') {
   $('#stCourse').textContent = state.course.name;
   $('#stFront').innerHTML = nines.map((n) => opt(n, plan.front)).join('');
   $('#stBack').innerHTML = nines.map((n) => opt(n, plan.back)).join('') + `<option value="" ${plan.back ? '' : 'selected'}>なし（9ホールのみ）</option>`;
-  const hasBack = scorecard?.courses?.some((c) => c.holes?.some((h) => h.back));
-  $('#stTeeWrap').hidden = !hasBack;
+  // every tee can be chosen; tees the scorecard has no numbers for use the regular yardage (said in the note)
+  const has = (k) => !!scorecard?.courses?.some((c) => c.holes?.some((h) => h[k]));
+  $('#stTeeWrap').hidden = false;
+  $$('#stTee button').forEach((b) => { const k = b.dataset.v; b.dataset.missing = k !== 'regular' && !has(k) ? '1' : ''; });
+  if (mode !== 'edit' && state.ui.gender === 'women' && !plan.tee) plan.tee = 'ladies';
+  const teeNote = () => { const b = $('#stTee button.on'); $('#stTeeNote').textContent = !scorecard ? 'このコースはスコアカードがないため、距離はGPSと地図から出します（ティーによる違いはありません）。' : b?.dataset.missing ? `このコースのスコアカードには${b.textContent}ティーのヤードがないため、レギュラーティーのヤードを表示します。` : ''; };
+  $('#stTee').dataset.note = '1'; setTimeout(teeNote, 0); $('#stTee').onchange = teeNote; startTeeNote = teeNote;
   $$('#stTee button').forEach((b) => b.classList.toggle('on', b.dataset.v === (plan.tee || 'regular')));
   $('#stPlayers').value = '';
   $('#stPlayersWrap').hidden = mode === 'edit';
@@ -823,7 +831,7 @@ function renderRoundBar() {
   const tot = played.reduce((a, h) => a + h.strokes, 0), toPar = tot - played.reduce((a, h) => a + h.par, 0);
   const n = p.back ? 18 : 9, at = (curHole()?.roundIdx ?? 0) + 1;
   bar.className = 'round-bar live';
-  bar.innerHTML = `<span class="rb-dot" aria-hidden="true"></span><div class="rb-info"><b>プレー中</b> ${esc(p.front.short)}${p.back ? ' → ' + esc(p.back.short) : ''}${p.tee === 'back' ? ' · バックティー' : ''}<br><span>${at}/${n}ホール目${played.length ? ` · ${tot}（${toPar === 0 ? 'E' : toPar > 0 ? '+' + toPar : toPar}）` : ''}</span><br><span class="rb-gps ${Date.now() - lastFixAt < 15000 ? 'ok' : 'wait'}">${Date.now() - lastFixAt < 15000 ? 'GPS計測中' : 'GPSを探しています…'} · 歩いた距離 ${walkedKm().toFixed(1)}km</span></div><button class="btn small" id="btnRoundEdit">変更</button><button class="btn small" id="btnRoundEnd">終了</button>`;
+  bar.innerHTML = `<span class="rb-dot" aria-hidden="true"></span><div class="rb-info"><b>プレー中</b> ${esc(p.front.short)}${p.back ? ' → ' + esc(p.back.short) : ''}${{ back: ' · バックティー', ladies: ' · レディースティー', front: ' · フロントティー' }[p.tee] || ''}<br><span>${at}/${n}ホール目${played.length ? ` · ${tot}（${toPar === 0 ? 'E' : toPar > 0 ? '+' + toPar : toPar}）` : ''}</span><br><span class="rb-gps ${Date.now() - lastFixAt < 15000 ? 'ok' : 'wait'}">${Date.now() - lastFixAt < 15000 ? 'GPS計測中' : 'GPSを探しています…'} · 歩いた距離 ${walkedKm().toFixed(1)}km</span></div><button class="btn small" id="btnRoundEdit">変更</button><button class="btn small" id="btnRoundEnd">終了</button>`;
   $('#btnRoundEdit').onclick = () => openStartRound('edit');
   $('#btnRoundEnd').onclick = endRound;
 }
