@@ -146,8 +146,9 @@ export function initNavi() {
   };
   // layout illustration (course-guide style) instead of the aerial photo; remembered
   const artBtn = $('#btnArt');
-  const applyArt = () => { hv.setArt(!!state.settings.holeArt); artBtn.classList.toggle('on', !!state.settings.holeArt); };
-  artBtn.onclick = () => { state.settings.holeArt = !state.settings.holeArt; save('settings'); applyArt(); if (view !== 'hole' && view !== 'green') setView('hole'); toast(state.settings.holeArt ? 'レイアウト図で表示（GPS・距離はそのまま）' : '航空写真で表示'); };
+  const artOn = () => state.settings.holeArt !== false; // the layout illustration is the default view
+  const applyArt = () => { hv.setArt(artOn()); artBtn.classList.toggle('on', artOn()); };
+  artBtn.onclick = () => { state.settings.holeArt = !artOn(); save('settings'); applyArt(); if (view !== 'hole' && view !== 'green') setView('hole'); toast(artOn() ? 'レイアウト図で表示（GPS・距離はそのまま）' : '航空写真で表示'); };
   applyArt();
   $('#btnRenumber').onclick = openRenumber;
   $('#rnClose').onclick = () => ($('#renumberPanel').hidden = true);
