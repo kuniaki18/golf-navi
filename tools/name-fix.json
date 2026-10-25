@@ -1,5 +1,17 @@
 {
   "_note": "Display names for OSM entries whose name is a mapper's label (romaji / file-like). Applied by extract.mjs and kept across regenerations.",
-  "osm-relation-20291444": { "n": "赤羽ゴルフ倶楽部 INコース", "k": "あかばねごるふくらぶ いんこーす" },
-  "osm-way-1484214459": { "n": "赤羽ゴルフ倶楽部 OUTコース", "k": "あかばねごるふくらぶ あうとこーす" }
+  "osm-relation-20291444": {
+    "n": "赤羽ゴルフ倶楽部 INコース",
+    "k": "あかばねごるふくらぶ いんこーす"
+  },
+  "osm-way-1484214459": {
+    "n": "赤羽ゴルフ倶楽部 OUTコース",
+    "k": "あかばねごるふくらぶ あうとこーす"
+  },
+  "osm-way-1374148217": {
+    "n": "草津温泉ゴルフ場",
+    "k": "くさつおんせんごるふじょう",
+    "ad": "群馬県草津町大字草津字白根国有林154林班",
+    "sc": 1
+  }
 }

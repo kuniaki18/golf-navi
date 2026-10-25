@@ -63,7 +63,7 @@ async function run() {
   const pref = $('#prefSel').value;
   let list = await searchCourses(kw, { pref: pref || undefined });
   if (!kw && !pref && myPos) list = await coursesNear(myPos.lat, myPos.lon, 60);
-  if ($('#fltHoles').checked) list = list.filter((c) => c.holesMapped > 0 || c.holesEst > 0 || commIdx[c.id]);
+  if ($('#fltHoles').checked) list = list.filter((c) => c.holesMapped > 0 || c.greensMapped > 0 || commIdx[c.id]);
   if ($('#fltFav').checked) list = list.filter((c) => state.favorites?.[c.id]);
   const op = $('#fltOp').value; if (op) list = list.filter((c) => (c.operator || '').includes(op));
   if ($('#fltRecent').checked) { const rec = recentIds(); list = list.filter((c) => rec.has(c.id)); }
@@ -88,7 +88,7 @@ let commIdx = {};
 function badge(c) {
   const comm = commIdx[c.id];
   if (comm && !(c.holesMapped >= 9)) return `<span class="pill good">みんなの地図 ${comm}H</span>`;
-  if (!(c.holesMapped >= 9) && c.holesEst >= 9) return `<span class="pill">ホール自動推定 ${c.holesEst}H</span>`;
+  if (!(c.holesMapped >= 9) && c.greensMapped >= 9) return `<span class="pill">グリーン位置あり（ホール番号は未登録）</span>`;
   if (c.holesMapped >= 9) return `<span class="pill good">ホールデータ ${c.holesMapped}H</span>`;
   if (c.approx) return '<span class="pill muted-pill">位置は市町村の目安</span>';
   if (c.holesMapped) return `<span class="pill">一部ホール ${c.holesMapped}H</span>`;

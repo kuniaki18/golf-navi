@@ -376,6 +376,8 @@ export async function loadCourse(force) {
   features = null; holes = []; target = null; strat = null;
   const c = state.course;
   if (!c) { renderEmpty(); return; }
+  // a course was chosen: the 'are you at …?' question from before is no longer needed
+  $('#detectBanner').hidden = true; detected = 'done';
   if (c.source === 'gora' && !c.osmLinked) {
     try { const o = await matchCourse(c.lat, c.lon); if (o) { Object.assign(c, { bounds: o.bounds, osmId: o.id, osmLinked: true }); save('course'); } } catch {}
   }
@@ -416,7 +418,9 @@ let communityData = {};
 const activeSet = () => (cid() && state.ui.holeSet?.[cid()]) || 0;
 function rebuild(first) {
   const keep = curHole()?.key ?? state.ui.holeKey;
-  allHoles = buildHoles(features, { ...(features?.estHoles || {}), ...communityData, ...userHoles() });
+  // estimated holes are not used: measured on mapped courses their hole number was right only 2% of the time
+  // (tools/validate-est.mjs). Mapped greens are offered as 'nearby greens' instead, and rounds teach the real holes.
+  allHoles = buildHoles(features, { ...communityData, ...userHoles() });
   // 2-green systems: use the green the player picked for this hole (default: the first option)
   for (const h of allHoles) {
     if (!h.greenOptions) continue;
