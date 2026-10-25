@@ -406,6 +406,8 @@ export async function loadCourse(force) {
 }
 
 let allHoles = [];
+export const LADIES_RATIO = 0.85;
+const playingTee = () => (roundActive() ? state.current.plan.tee || 'regular' : 'regular');
 let officialCard = null, communityCard = null;
 /** which par / yardage table to use: your own entry, then the official card shipped with the app, then the community's */
 function pickScorecard() {
@@ -434,13 +436,16 @@ function rebuild(first) {
   // yardage of the tee being played (falls back to the regular tee when the scorecard has no number for it)
   const tee = roundActive() ? state.current.plan.tee || 'regular' : 'regular';
   const ydOf = (sc) => (tee === 'back' ? sc.back : tee === 'ladies' ? sc.ladies : tee === 'front' ? sc.front : null) || sc.yd;
-  for (const h of allHoles) { if (h.source === 'est') continue; const sc = scorecard?.courses?.[h.set || 0]?.holes?.[h.no - 1]; if (sc) { h.par = sc.par; h.parEst = false; h.officialY = ydOf(sc); } }
+  // ladies tee without numbers on the scorecard: about 85% of the regular yardage (草津温泉 5,420 / 6,354; typical courses
+  // are close to this) — always labelled 推定
+  const ladiesEst = (sc) => tee === 'ladies' && !sc.ladies;
+  for (const h of allHoles) { if (h.source === 'est') continue; const sc = scorecard?.courses?.[h.set || 0]?.holes?.[h.no - 1]; if (sc) { h.par = sc.par; h.parEst = false; h.officialY = ladiesEst(sc) ? Math.round(sc.yd * LADIES_RATIO) : ydOf(sc); h.teeEst = ladiesEst(sc); } }
   const sets = [...new Set(allHoles.map((h) => h.set || 0))].sort((a, b) => a - b);
   if (!sets.includes(activeSet())) setSet(0, false);
   // during a started round the holes follow the plan (front nine → back nine); otherwise one course at a time
   holes = roundActive() ? planHoles(allHoles, state.current.plan) : allHoles.filter((h) => (h.set || 0) === activeSet());
   // official course of a 27-hole club played on map holes: par / yardage from that course's scorecard row
-  for (const h of holes) { if (h.scIdx == null) continue; const sc = scRow(h, scorecard); if (sc) { h.par = sc.par; h.parEst = false; h.officialY = ydOf(sc); } }
+  for (const h of holes) { if (h.scIdx == null) continue; const sc = scRow(h, scorecard); if (sc) { h.par = sc.par; h.parEst = false; h.officialY = ladiesEst(sc) ? Math.round(sc.yd * LADIES_RATIO) : ydOf(sc); h.teeEst = ladiesEst(sc); } }
   holeIdx = Math.max(0, holes.findIndex((h) => h.key === keep));
   const btn = $('#setBtn');
   btn.hidden = sets.length < 2 || roundActive();
@@ -481,7 +486,7 @@ export function gotoHole(i, fit) {
   target = null;
   $('#holeNo').textContent = h.no > 100 ? '?' : h.dispNo ?? h.no;
   const lenY = h.lengthM ? m2y(h.lengthM) : null;
-  $('#holeMeta').textContent = `${h.nineName ? h.nineName + ' · ' : ''}PAR ${h.par ?? '-'}${h.parEst ? '（推定）' : ''} · ${h.officialY ? `公式 ${fmt(h.officialY)}${ul()}` : lenY ? fmt(lenY) + ul() : '距離データなし'}${h.hcp ? ' · HDCP ' + h.hcp : ''}`;
+  $('#holeMeta').textContent = `${h.nineName ? h.nineName + ' · ' : ''}PAR ${h.par ?? '-'}${h.parEst ? '（推定）' : ''} · ${h.officialY ? (h.teeEst ? `レディース 約${fmt(h.officialY)}${ul()}（推定）` : `公式 ${fmt(h.officialY)}${ul()}`) : lenY ? (playingTee() === 'ladies' ? `レディース 約${fmt(lenY * LADIES_RATIO)}${ul()}（推定）` : fmt(lenY) + ul()) : '距離データなし'}${h.hcp ? ' · HDCP ' + h.hcp : ''}`;
   $('#btnRenumber').hidden = !['est', 'user', 'community', 'learned'].includes(h.source);
   const gb = $('#btnGreenAlt');
   gb.hidden = !h.greenOptions;
@@ -743,7 +748,12 @@ export function openStartRound(mode = 'new') {
   $('#stTeeWrap').hidden = false;
   $$('#stTee button').forEach((b) => { const k = b.dataset.v; b.dataset.missing = k !== 'regular' && !has(k) ? '1' : ''; });
   if (mode !== 'edit' && state.ui.gender === 'women' && !plan.tee) plan.tee = 'ladies';
-  const teeNote = () => { const b = $('#stTee button.on'); $('#stTeeNote').textContent = !scorecard ? 'このコースはスコアカードがないため、距離はGPSと地図から出します（ティーによる違いはありません）。' : b?.dataset.missing ? `このコースのスコアカードには${b.textContent}ティーのヤードがないため、レギュラーティーのヤードを表示します。` : ''; };
+  const teeNote = () => {
+    const b = $('#stTee button.on'), k = b?.dataset.v;
+    $('#stTeeNote').textContent = k === 'ladies' && (!scorecard || b.dataset.missing) ? 'このコースはレディースティーのヤードが分からないため、ホールの長さはレギュラーの約85%で推定して表示します。グリーンまでの距離はGPSで測るので、ティーに関係なく正確です。'
+      : !scorecard ? 'このコースはスコアカードがないため、ホールの長さは地図から出します。グリーンまでの距離はGPSで測ります。'
+      : b?.dataset.missing ? `このコースのスコアカードには${b.textContent}ティーのヤードがないため、レギュラーティーのヤードを表示します。` : '';
+  };
   $('#stTee').dataset.note = '1'; setTimeout(teeNote, 0); $('#stTee').onchange = teeNote; startTeeNote = teeNote;
   $$('#stTee button').forEach((b) => b.classList.toggle('on', b.dataset.v === (plan.tee || 'regular')));
   $('#stPlayers').value = '';
