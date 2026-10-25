@@ -3,6 +3,14 @@ import { $, esc, toast, dist, PREFS } from './util.js';
 import { state, save } from './store.js';
 import { bundledCourses, bundleInfo, searchCourses, coursesNear } from './osm.js';
 import { searchCourses as goraSearch, hasGora } from './gora.js';
+import { driveEstimate, fmtMinutes, geocode } from './travel.js';
+import { aerialTiles, wikiInfo } from './coursephotos.js';
+
+const origins = () => (state.settings.origins ??= []);
+/** "自宅 52km・車で約1時間" for each saved starting point */
+function travelText(c) {
+  return origins().map((o) => { const km = dist(o, c) / 1000; const e = driveEstimate(km); return `${o.name}から${Math.round(e.roadKm)}km・車で${fmtMinutes(e.min)}`; });
+}
 
 let lastList = [];
 let shown = 60;
@@ -28,6 +36,7 @@ export function initCourses(onSelect) {
   $('#btnSearchGora').onclick = gora;
   $('#btnMoreCourses').onclick = () => { shown += 60; render(); };
   $('#courseList').addEventListener('click', onClick);
+  initOrigins();
   fetch('data/community/_index.json').then((r) => (r.ok ? r.json() : {})).then((j) => { commIdx = j || {}; render(); }).catch(() => {});
   bundledCourses().then((all) => {
     const info = bundleInfo();
@@ -60,8 +69,11 @@ async function run() {
   if ($('#fltRecent').checked) { const rec = recentIds(); list = list.filter((c) => rec.has(c.id)); }
   const sort = $('#courseSort').value;
   for (const c of list) c._d = myPos ? dist(myPos, c) / 1000 : null;
+  const home = origins()[0];
+  for (const c of list) c._h = home ? dist(home, c) / 1000 : null;
   list = list.slice().sort((a, b) =>
-    sort === 'name' ? a.name.localeCompare(b.name, 'ja')
+    sort === 'home' && home ? a._h - b._h
+      : sort === 'name' ? a.name.localeCompare(b.name, 'ja')
       : sort === 'data' ? (b.holesMapped || 0) - (a.holesMapped || 0) || (a._d ?? 0) - (b._d ?? 0)
         : (a._d ?? 0) - (b._d ?? 0) || a.name.localeCompare(b.name, 'ja'));
   // keep the selected course on top when nothing is typed
@@ -96,6 +108,7 @@ function render() {
           ${c.address || c.pref ? `<span>${esc(c.address || c.pref)}</span>` : ''}${c.operator ? `<span>${esc(c.operator)}</span>` : ''}
           ${c._d != null ? `<span>${c._d < 10 ? c._d.toFixed(1) : Math.round(c._d)}km</span>` : ''}
           ${c.holes ? `<span>${c.holes}H</span>` : ''}
+          ${travelText(c).map((t) => `<span class="travel">${esc(t)}（目安）</span>`).join('')}
           ${c.ic ? `<span>${esc(c.ic)} IC ${esc(c.icDistance ?? '')}km</span>` : ''}
           ${c.evaluation ? `<span>評価 ${esc(c.evaluation)}</span>` : ''}
         </div>
@@ -105,10 +118,12 @@ function render() {
       <div class="actions">
         <button class="btn small primary" data-pick="${i}">${state.course?.id === c.id ? 'プレー中' : 'このコースでプレー'}</button>
         <button class="btn small" data-book="${i}">攻略ブック</button>
+        <button class="btn small" data-info="${i}">写真・紹介</button>
         ${c.reserveUrl ? `<a class="btn small" href="${esc(c.reserveUrl)}" target="_blank" rel="noopener">予約</a>` : `<a class="btn small" href="https://www.google.com/search?q=${encodeURIComponent(c.name + " 予約 楽天GORA")}" target="_blank" rel="noopener">予約を探す</a>`}
         ${c.website ? `<a class="btn small" href="${esc(c.website)}" target="_blank" rel="noopener">公式</a>` : ''}
         <a class="btn small" href="https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}" target="_blank" rel="noopener">ルート</a>
       </div>
+      <div class="ci-info" id="ciInfo${i}" hidden></div>
     </article>`).join('');
   $('#btnMoreCourses').hidden = lastList.length <= shown;
 }
@@ -121,8 +136,9 @@ function choose(c) {
 
 function onClick(e) {
   const b = e.target.closest('button'); if (!b) return;
-  const i = Number(b.dataset.pick ?? b.dataset.book ?? b.dataset.fav);
+  const i = Number(b.dataset.pick ?? b.dataset.book ?? b.dataset.fav ?? b.dataset.info);
   const c = lastList[i]; if (!c) return;
+  if (b.dataset.info != null) { showInfo(c, i); return; }
   if (b.dataset.fav != null) {
     state.favorites ??= {};
     if (state.favorites[c.id]) delete state.favorites[c.id]; else state.favorites[c.id] = { name: c.name, at: Date.now() };
@@ -144,4 +160,46 @@ async function gora() {
     $('#courseMeta').textContent = `楽天GORA ${list.length} 件`;
     render();
   } catch (e) { $('#courseMeta').textContent = e.message; }
+}
+
+// ---------------- photos & introduction ----------------
+async function showInfo(c, i) {
+  const box = $('#ciInfo' + i);
+  if (!box.hidden) { box.hidden = true; return; }
+  box.hidden = false;
+  const a = aerialTiles(c);
+  box.innerHTML = `<div class="ci-aerial" aria-label="コース全体の航空写真">${a.tiles.map((u) => `<img src="${u}" alt="" loading="lazy">`).join('')}</div>
+    <p class="muted credit">航空写真：国土地理院（シームレス空中写真）</p><div class="ci-wiki muted">紹介を探しています…</div>`;
+  const w = await wikiInfo(c.name);
+  const el = box.querySelector('.ci-wiki');
+  if (!w) { el.textContent = 'このゴルフ場のWikipediaの記事は見つかりませんでした。'; return; }
+  el.classList.remove('muted');
+  el.innerHTML = `${w.thumb ? `<img class="ci-photo" src="${esc(w.thumb)}" alt="${esc(w.title)}" loading="lazy"><p class="muted credit">写真：${w.file ? `<a class="link" href="${esc(w.file)}" target="_blank" rel="noopener">Wikimedia Commons</a>` : 'Wikimedia Commons'}</p>` : ''}
+    ${w.extract ? `<p>${esc(w.extract)}</p>` : ''}<p class="muted credit">出典：<a class="link" href="${esc(w.url)}" target="_blank" rel="noopener">Wikipedia「${esc(w.title)}」</a>（CC BY-SA）</p>`;
+}
+
+// ---------------- starting points ----------------
+function initOrigins() {
+  const st = $('#orgStatus');
+  const renderList = () => {
+    $('#originList').innerHTML = origins().length ? origins().map((o, k) => `<div class="origin"><b>${esc(o.name)}</b><span class="muted">${esc(o.label || '')}</span><button class="btn small" data-odel="${k}">削除</button></div>`).join('') : '<p class="muted">まだ登録されていません。</p>';
+  };
+  const add = (o) => {
+    if (origins().length >= 3) { st.textContent = '登録できるのは3つまでです。どれかを削除してください。'; return; }
+    origins().push(o); save('settings'); renderList(); run(); st.textContent = `「${o.name}」を登録しました。コース一覧に移動時間の目安が出ます。`;
+    $('#orgName').value = ''; $('#orgAddr').value = '';
+  };
+  const name = () => $('#orgName').value.trim() || ['自宅', '出発地2', '出発地3'][origins().length] || '出発地';
+  $('#btnOrgAdd').onclick = async () => {
+    const q = $('#orgAddr').value.trim(); if (!q) { st.textContent = '住所を入れてください（市区町村まででもOK）'; return; }
+    st.textContent = '住所を探しています…';
+    try { const g = await geocode(q); add({ name: name(), lat: g.lat, lon: g.lon, label: g.label }); } catch (e) { st.textContent = e.message; }
+  };
+  $('#btnOrgHere').onclick = () => {
+    if (!navigator.geolocation) { st.textContent = 'この端末では現在地を取得できません'; return; }
+    st.textContent = '現在地を取得中…';
+    navigator.geolocation.getCurrentPosition((p) => add({ name: name(), lat: p.coords.latitude, lon: p.coords.longitude, label: '現在地で登録' }), () => (st.textContent = '現在地を取得できませんでした'), { timeout: 15000 });
+  };
+  $('#originList').onclick = (e) => { const b = e.target.closest('[data-odel]'); if (!b) return; origins().splice(Number(b.dataset.odel), 1); save('settings'); renderList(); run(); };
+  renderList();
 }

@@ -192,7 +192,7 @@
     <div class="form-grid">
       <label>都道府県<select id="prefSel"></select></label>
       <label>運営会社<select id="fltOp"><option value="">すべて</option><option value="アコーディア">アコーディア・ゴルフ</option><option value="PGM">PGM</option><option value="東急">東急</option><option value="東建">東建</option></select></label>
-      <label>並び順<select id="courseSort"><option value="near">近い順</option><option value="name">名前順</option><option value="data">ホールデータ優先</option></select></label>
+      <label>並び順<select id="courseSort"><option value="near">近い順</option><option value="name">名前順</option><option value="data">ホールデータ優先</option><option value="home">出発地から近い順</option></select></label>
     </div>
     <div class="chip-row">
       <label class="chip"><input type="checkbox" id="fltHoles"> ホールデータあり</label>
@@ -562,6 +562,14 @@
     <label class="check"><input type="checkbox" id="setSun"> 屋外モード（直射日光の下でも読める高コントラスト・大きな文字）</label>
     <label class="check"><input type="checkbox" id="setWake" checked> プレー中は画面を消さない</label>
     <label class="check"><input type="checkbox" id="setShareMaps" checked> 登録したホール（ティーとグリーンの位置）を「みんなの地図」に提供する</label>
+  </div>
+  <div class="card" id="originCard">
+    <h2>出発地（移動時間の目安）</h2>
+    <p class="muted">自宅や待ち合わせ場所を3つまで登録すると、コース一覧にそれぞれからの距離と車での時間の目安が出ます。道路の距離は直線の約1.3倍、一般道と高速道路の平均速度で計算した<b>目安</b>で、渋滞や実際の道順は含みません。正確な時間は「ルート」ボタンの地図アプリで確認してください。</p>
+    <div class="origin-list" id="originList"></div>
+    <div class="form-grid"><label>名前<input id="orgName" placeholder="例: 自宅" maxlength="10"></label><label>住所<input id="orgAddr" placeholder="例: 埼玉県川越市元町"></label></div>
+    <div class="btn-row"><button class="btn primary" id="btnOrgAdd">住所で登録</button><button class="btn" id="btnOrgHere">現在地を登録</button></div>
+    <p class="muted" id="orgStatus" role="status"></p>
   </div>
   <div class="card" id="aiCard">
     <h2>AI（Claude）</h2>

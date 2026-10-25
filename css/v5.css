@@ -189,3 +189,15 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .map-btn#btnFly svg { width: 22px; height: 22px; stroke: #fff; }
 .map-btn#btnFly.on { background: var(--flag); }
 .map-btn#btnFly.on svg { stroke: #1a1400; }
+
+/* course photos / travel */
+.course-item .meta .travel { color: var(--green); font-weight: 500; }
+.ci-info { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; }
+.ci-aerial { display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 14px; overflow: hidden; aspect-ratio: 1; background: #1b2b20; }
+.ci-aerial img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ci-photo { width: 100%; border-radius: 14px; display: block; }
+.ci-wiki p { margin: 4px 0; font-size: .88rem; }
+.credit { font-size: .72rem !important; margin: 0 !important; }
+.origin-list { display: flex; flex-direction: column; gap: 6px; }
+.origin { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.origin span { flex: 1; min-width: 120px; font-size: .8rem; }
