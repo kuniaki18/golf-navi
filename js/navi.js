@@ -244,10 +244,35 @@ function startGPS() {
     gpsError = err.code === 1 ? '位置情報がオフです（地図→「現在地を指定」で手動指定）' : 'GPS信号を探しています…';
     gpsBadge();
     if (err.code !== 1) setTimeout(startGPS, 5000);
-  }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
+  }, { enableHighAccuracy: true, maximumAge: roundActive() ? 0 : 1000, timeout: 20000 });
+}
+/** start the position watch again from scratch (after the phone slept, or when fixes stopped) */
+function restartGPS() { if (watchId != null) navigator.geolocation.clearWatch(watchId); watchId = null; startGPS(); }
+let lastFixAt = 0;
+// during a round the position is measured all the time: if fixes stop (screen was off, the browser paused the watch),
+// the watch is restarted; returning to the app restarts it at once
+setInterval(() => { if (roundActive() && document.visibilityState === 'visible' && Date.now() - lastFixAt > 20000) restartGPS(); }, 10000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && roundActive() && Date.now() - lastFixAt > 5000) restartGPS(); });
+
+/** where the player walked during the round (compact: [lat, lon, seconds since start]) */
+function recordTrack(p, acc) {
+  const r = state.current; if (!roundActive() || !(acc <= 30)) return;
+  const tr = (r.track ??= []);
+  const t = Math.round((Date.now() - (r.started || Date.now())) / 1000);
+  const last = tr[tr.length - 1];
+  if (last && dist({ lat: last[0], lon: last[1] }, p) < 8 && t - last[2] < 60) return;
+  if (tr.length >= 5000) tr.splice(0, 1);
+  tr.push([Math.round(p.lat * 1e6) / 1e6, Math.round(p.lon * 1e6) / 1e6, t]);
+  save('round');
+}
+export function walkedKm(tr = state.current?.track || []) {
+  let m = 0;
+  for (let i = 1; i < tr.length; i++) { const d = dist({ lat: tr[i - 1][0], lon: tr[i - 1][1] }, { lat: tr[i][0], lon: tr[i][1] }); if (d < 300) m += d; }
+  return m / 1000;
 }
 function onFix(pos) {
-  gpsError = '';
+  gpsError = ''; lastFixAt = Date.now();
+  recordTrack({ lat: pos.coords.latitude, lon: pos.coords.longitude }, pos.coords.accuracy);
   if (Number.isFinite(pos.coords.heading) && (pos.coords.speed || 0) > 0.8) gpsHeading = pos.coords.heading;
   const wasMeasuring = !!gps.measure;
   const st = gps.push({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, t: Date.now(), speed: pos.coords.speed });
@@ -261,6 +286,7 @@ function onFix(pos) {
 }
 // refresh the status line every second so the age of the fix is always visible
 setInterval(() => { if (document.visibilityState === 'visible' && $('#gpsStatus')) gpsBadge(); }, 1000);
+setInterval(() => { const el = document.querySelector('#roundBar .rb-gps'); if (!el || !roundActive()) return; const ok = Date.now() - lastFixAt < 15000; el.className = 'rb-gps ' + (ok ? 'ok' : 'wait'); el.textContent = (ok ? 'GPS計測中' : 'GPSを探しています…') + ' · 歩いた距離 ' + walkedKm().toFixed(1) + 'km'; }, 5000);
 
 function autoHole() {
   const cur = holes[holeIdx], next = holes[holeIdx + 1];
@@ -607,6 +633,11 @@ function startRound() {
   } else {
     const players = $('#stPlayers').value.split(/[\s、,]+/).map((x) => x.trim()).filter(Boolean).slice(0, 7);
     const kept = beginRound({ plan, pars, players });
+    // greeting at the first tee (spoken from the tap, so phones allow the sound)
+    const hello = [`${state.course.name}、${front.short}からのスタートです。`, 'よろしくお願いいたします。'];
+    speak(hello, { rate: Number(state.settings.voiceRate) || 1.05, onFail: () => { const k = browserKind(); if (k) showVoiceHelp(k); } });
+    restartGPS();
+    window.dispatchEvent(new Event('round-started'));
     toast(`プレー開始！ ${front.short}${back ? ' → ' + back.short : ''}${kept ? '（前のラウンドは履歴に保存しました）' : ''}`, 3500);
   }
   state.ui.holeKey = ph[0]?.key; save('ui');
@@ -640,7 +671,7 @@ function renderRoundBar() {
   const tot = played.reduce((a, h) => a + h.strokes, 0), toPar = tot - played.reduce((a, h) => a + h.par, 0);
   const n = p.back ? 18 : 9, at = (curHole()?.roundIdx ?? 0) + 1;
   bar.className = 'round-bar live';
-  bar.innerHTML = `<span class="rb-dot" aria-hidden="true"></span><div class="rb-info"><b>プレー中</b> ${esc(p.front.short)}${p.back ? ' → ' + esc(p.back.short) : ''}${p.tee === 'back' ? ' · バックティー' : ''}<br><span>${at}/${n}ホール目${played.length ? ` · ${tot}（${toPar === 0 ? 'E' : toPar > 0 ? '+' + toPar : toPar}）` : ''}</span></div><button class="btn small" id="btnRoundEdit">変更</button><button class="btn small" id="btnRoundEnd">終了</button>`;
+  bar.innerHTML = `<span class="rb-dot" aria-hidden="true"></span><div class="rb-info"><b>プレー中</b> ${esc(p.front.short)}${p.back ? ' → ' + esc(p.back.short) : ''}${p.tee === 'back' ? ' · バックティー' : ''}<br><span>${at}/${n}ホール目${played.length ? ` · ${tot}（${toPar === 0 ? 'E' : toPar > 0 ? '+' + toPar : toPar}）` : ''}</span><br><span class="rb-gps ${Date.now() - lastFixAt < 15000 ? 'ok' : 'wait'}">${Date.now() - lastFixAt < 15000 ? 'GPS計測中' : 'GPSを探しています…'} · 歩いた距離 ${walkedKm().toFixed(1)}km</span></div><button class="btn small" id="btnRoundEdit">変更</button><button class="btn small" id="btnRoundEnd">終了</button>`;
   $('#btnRoundEdit').onclick = () => openStartRound('edit');
   $('#btnRoundEnd').onclick = endRound;
 }

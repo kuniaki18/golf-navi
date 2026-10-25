@@ -152,15 +152,18 @@ function setSun(on) {
   toast(on ? '屋外モード: 直射日光でも見やすい表示にしました' : '屋外モードを切りました');
 }
 
-// keep the screen on during play
+// keep the screen on during play: on the navi screen, and on every screen while a round is in progress
 let lock = null;
+const inRound = () => !!(state.current?.plan && !state.current.ended);
 async function wake(on) {
+  on = on || inRound();
   try {
     if (on && state.settings.wake !== false && 'wakeLock' in navigator && !lock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => (lock = null)); }
     if (!on && lock) { await lock.release(); lock = null; }
   } catch { lock = null; }
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden && state.ui.tab === 'navi') wake(true); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && (state.ui.tab === 'navi' || inRound())) wake(true); });
+window.addEventListener('round-started', () => wake(true));
 
 // ---------------- install (PWA) ----------------
 let deferred = null;

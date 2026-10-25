@@ -201,3 +201,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .origin-list { display: flex; flex-direction: column; gap: 6px; }
 .origin { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .origin span { flex: 1; min-width: 120px; font-size: .8rem; }
+.round-bar.live .rb-gps { font-size: .74rem; }
+.round-bar.live .rb-gps.ok::before { content: "● "; color: #4ee08e; }
+.round-bar.live .rb-gps.wait { color: #ffd27a; }
