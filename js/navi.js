@@ -14,6 +14,7 @@ import { submitHole, communityHoles, communityDoc, submitScorecard } from './com
 import { dataQuality, checkScorecard } from './coursedata.js';
 import { learnHoles } from './learn.js';
 import { briefingScript } from './briefing.js';
+import { dwellOnGreen, shouldAdvance } from './easymap.js';
 import { computeStats } from './analysis.js';
 import { ninesOf, defaultPlan, planHoles, planPars, scRow } from './round.js';
 import { beginRound } from './score.js';
@@ -102,6 +103,9 @@ export function initNavi() {
   $('#btnVoice').onclick = voiceCaddie;
   $('#stGo').onclick = startRound;
   $('#btnScEdit').onclick = openScorecardEditor;
+  $('#emTee').onclick = () => { if (!me) { toast('現在地を取得中です。少し待ってから押してください'); return; } if ((meAcc ?? 99) > 25) toast('GPSの精度が低いので、位置が少しずれるかもしれません'); setHolePoint('tee', me, 'tap'); };
+  $('#emGreen').onclick = () => { if (!me) { toast('現在地を取得中です。少し待ってから押してください'); return; } setHolePoint('green', me, 'tap'); };
+  $('#emSkip').onclick = () => { if (holeIdx + 1 < holes.length) gotoHole(holeIdx + 1, true); };
   $('#briefPlay').onclick = () => speakBriefing(briefingScript(briefingInfo()).sentences);
   $('#briefClose').onclick = () => { stopSpeaking(); $('#briefCard').hidden = true; };
   $('#briefDate').onchange = () => { (state.ui.playDate ??= {})[cid()] = $('#briefDate').value || undefined; save('ui'); openBriefing(false); };
@@ -294,6 +298,7 @@ function onFix(pos) {
   if (wasMeasuring && !gps.measure) afterPrecise();
   if (st.mode === 'measuring') return;
   if ($('#autoHole').checked && holes.length) autoHole();
+  easyOnFix(pos.coords.accuracy);
   detectCourse();
   render();
 }
@@ -312,7 +317,9 @@ function autoHole() {
   const near = nearestHole(holes, me);
   if (near && near !== cur) {
     const dCur = Math.min(cur.center ? dist(me, cur.center) : Infinity, cur.tee ? dist(me, cur.tee) : Infinity);
-    if (dCur > 250 || (near.tee && dist(me, near.tee) < 30)) gotoHole(holes.indexOf(near), true);
+    // far from the current hole → switch; but when the current hole is not registered yet (distance unknown), switch
+    // only when standing on another hole's tee — otherwise it would jump back to the last registered hole
+    if ((Number.isFinite(dCur) && dCur > 250) || (near.tee && dist(me, near.tee) < 30)) gotoHole(holes.indexOf(near), true);
   }
 }
 
@@ -902,13 +909,66 @@ function showVoiceHelp(kind) {
 let mapping = false;
 function renderMappingCard(h) {
   const card = $('#mapCard');
-  const need = state.course && h && !h.center;
+  // the guide shows while the hole's green is unknown, and (during a round) until its tee is known too
+  const need = state.course && h && h.no <= 100 && (!h.center || (roundActive() && !h.tee && h.source !== 'osm'));
   card.hidden = !need && !mapping;
   if (card.hidden) return;
-  const chips = me && features ? greensNear(features, me, 4).filter((x) => x.d < 600) : [];
+  const known = holes.filter((x) => x.center).length;
+  $('#emHole').textContent = `${h.nineName ? h.nineName + ' ' : ''}${h.dispNo ?? h.no}番`;
+  $('#emProgress').textContent = `登録済み ${known}/${holes.length}`;
+  $('#emTeeStep').className = h.tee ? 'done' : 'todo';
+  $('#emGreenStep').className = h.center ? 'done' : 'todo';
+  $('#emTee').textContent = h.tee ? '✓ ティー登録済み（押すと今の場所に直す）' : '📍 ここがティー';
+  $('#emGreen').textContent = h.center ? '✓ グリーン登録済み（押すと今の場所に直す）' : '📍 ここがグリーン';
+  const chips = !h.center && me && features ? greensNear(features, me, 4).filter((x) => x.d < 600) : [];
   $('#greenChips').innerHTML = chips.length
-    ? '<span class="muted">近くのグリーン:</span>' + chips.map((x) => `<button class="btn small" data-g="${x.g.id}">${fmt(m2y(x.d))}${ul()} 先</button>`).join('')
+    ? '<span class="muted">地図にあるグリーン:</span>' + chips.map((x) => `<button class="btn small" data-g="${x.g.id}">${fmt(m2y(x.d))}${ul()} 先</button>`).join('')
     : '';
+}
+/** save a tee / green position for the current hole (from GPS), share it when the hole is complete */
+function setHolePoint(kind, p, how) {
+  const h = curHole(); if (!h || !cid() || !p) return;
+  const u = userHoles(); const prev = u[h.key] ? { ...u[h.key] } : null;
+  // a green tapped near a mapped green snaps to that green's centre
+  let pt = { lat: p.lat, lon: p.lon };
+  if (kind === 'green' && features?.greens) { const g = greensNear(features, pt, 1)[0]; if (g && g.d < 25) pt = { ...g.g.c }; }
+  u[h.key] = { ...(u[h.key] || {}), [kind]: pt, learned: how === 'auto', updatedAt: Date.now() };
+  save('holes');
+  if (u[h.key].tee && u[h.key].green) submitHole(state.course, h.key, u[h.key]);
+  lastEasy = { key: h.key, prev, kind, how };
+  rebuild();
+  const name = `${h.nineName ? h.nineName + ' ' : ''}${h.dispNo ?? h.no}番`;
+  const box = $('#emAuto');
+  box.hidden = false;
+  box.innerHTML = `<span>${how === 'auto' ? '自動で' : ''}${esc(name)}の${kind === 'tee' ? 'ティー' : 'グリーン'}を登録しました</span> <button class="btn small" id="emUndo">取り消す</button>`;
+  $('#emUndo').onclick = undoEasy;
+  if (how === 'auto' && state.settings.voiceRate !== 'off') speak([`${name}のグリーンを登録しました。`], { rate: Number(state.settings.voiceRate) || 1.05 });
+  toast(`${name}の${kind === 'tee' ? 'ティー' : 'グリーン'}を登録しました`);
+}
+let lastEasy = null;
+function undoEasy() {
+  const e = lastEasy; if (!e) return;
+  const u = userHoles();
+  if (e.prev) u[e.key] = e.prev; else delete u[e.key];
+  save('holes'); lastEasy = null; $('#emAuto').hidden = true; rebuild(); toast('登録を取り消しました');
+}
+// during a round: the green registers itself when the player stands on a mapped green; the round moves on after the
+// score is in and the player walks off the green
+let greenDwell = null, advancedFrom = null;
+function easyOnFix(acc) {
+  if (!roundActive() || !me) return;
+  const h = curHole(); if (!h) return;
+  if (!h.center && features?.greens?.length) {
+    const r = dwellOnGreen(greenDwell, me, Date.now(), features.greens, { acc });
+    greenDwell = r.st;
+    if (r.green) { greenDwell = null; setHolePoint('green', r.green.c, 'auto'); return; }
+  }
+  const sh = scoreHole();
+  if ($('#autoHole').checked && advancedFrom !== h.key && shouldAdvance({ strokes: sh?.sh?.strokes, green: h.center, me, hasNext: holeIdx + 1 < holes.length })) {
+    advancedFrom = h.key;
+    gotoHole(holeIdx + 1, true);
+    toast(`次のホール（${curHole().dispNo ?? curHole().no}番）に進みました`);
+  }
 }
 function startMapping() {
   if (!state.course) { toast('先にコースを選んでください'); return; }

@@ -107,10 +107,16 @@
     <div class="qs-foot"><span class="muted" id="qsTotal">合計 -</span><div class="seg qs-fw" id="qsFw"><button data-v="left">左</button><button data-v="hit">FW</button><button data-v="right">右</button></div></div>
   </div>
 
-  <div class="card map-card" id="mapCard" hidden>
-    <div class="card-head"><h2>このホールは未登録です</h2><button class="btn small primary" id="btnMapHole">ホールを登録</button></div>
-    <p class="muted">上のホールビューで「ティー → グリーン」の順にタップするだけで登録できます（1ホール10秒）。ショット記録を使って回るだけでも自動で覚えます。</p>
-    <div class="btn-row tight" id="greenChips"></div>
+  <div class="card map-card easy-card" id="mapCard" hidden>
+    <div class="card-head"><h2>かんたん登録 <span id="emHole"></span></h2><span class="pill" id="emProgress"></span></div>
+    <p class="em-auto" id="emAuto" hidden></p>
+    <ol class="em-steps">
+      <li id="emTeeStep"><div><b>ティーに立ったら</b>ボタンを1回押すだけ（ショット記録の「ここから打つ」でもOK）</div><button class="btn primary em-big" id="emTee">📍 ここがティー</button></li>
+      <li id="emGreenStep"><div><b>グリーンに着いたら自動で登録</b>します（15秒ほど立ち止まると記録）。先に決めるなら下から選んでください。</div>
+        <div class="btn-row tight" id="greenChips"></div><button class="btn em-big" id="emGreen">📍 ここがグリーン</button></li>
+    </ol>
+    <p class="muted">スコアを入れてグリーンを離れると、次のホールに自動で進みます。登録した位置は次回から距離と攻略に使われます。</p>
+    <div class="btn-row tight"><button class="btn small" id="emSkip">このホールはとばす</button><button class="btn small" id="btnMapHole">地図をタップして登録</button></div>
   </div>
 
   <div class="card club-card">

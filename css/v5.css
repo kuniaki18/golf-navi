@@ -228,3 +228,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .brief-date { flex-direction: row; align-items: center; gap: 6px; }
 .brief-date input { width: auto; }
 .brief-card details p { font-size: .85rem; line-height: 1.8; }
+
+/* かんたん登録 */
+.easy-card { border: 2px solid color-mix(in srgb, var(--flag) 55%, var(--line)); }
+.em-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; counter-reset: em; }
+.em-steps li { counter-increment: em; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 10px 44px; border-radius: 14px; background: var(--surface-2); position: relative; font-size: .9rem; }
+.em-steps li::before { content: counter(em); position: absolute; left: 12px; top: 10px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 .85rem/1 var(--display); background: var(--flag); color: #1a1400; }
+.em-steps li.done::before { content: "✓"; background: var(--green); color: #fff; }
+.em-steps li.done { opacity: .75; }
+.em-steps b { display: block; }
+.em-big { min-height: 54px; font-size: 1.05rem; width: 100%; border-radius: 14px; }
+.em-auto { margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: color-mix(in srgb, var(--green) 12%, var(--surface)); border-radius: 12px; padding: 8px 10px; font-size: .88rem; }
