@@ -426,8 +426,8 @@ export async function loadCourse(force) {
     }
   }
   communityData = await communityHoles(c.id).catch(() => ({}));
-  scorecard = null;
-  try { const { bundledCourses } = await import('./osm.js'); const b = (await bundledCourses()).find((x) => x.id === (c.osmId || c.id)); if (b?.scorecard) scorecard = await (await fetch(`data/sc/${b.id}.json`)).json(); } catch {}
+  scorecard = null; holeNotes = null;
+  try { const { bundledCourses } = await import('./osm.js'); const b = (await bundledCourses()).find((x) => x.id === (c.osmId || c.id)); if (b?.scorecard) { scorecard = await (await fetch(`data/sc/${b.id}.json`)).json(); holeNotes = await fetch(`data/notes/${b.id}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null); } } catch {}
   officialCard = scorecard ? { ...scorecard, source: 'official' } : null;
   communityCard = null; try { const d = await communityDoc(c.id); if (d?.scorecard?.courses?.length) communityCard = { ...d.scorecard, source: 'community' }; } catch {}
   pickScorecard();
@@ -445,6 +445,9 @@ function pickScorecard() {
   scorecard = mine ? { ...mine, source: 'mine' } : officialCard || communityCard || null;
 }
 let scorecard = null;
+// per-hole course-guide notes (short summaries), in the official scorecard's course / hole order
+let holeNotes = null;
+const noteOf = (h) => (h ? scRow(h, holeNotes) : null);
 const courseName = (i) => (scorecard?.courses?.[i]?.name ? `${scorecard.courses[i].name}コース` : setLabel(i));
 let communityData = {};
 const activeSet = () => (cid() && state.ui.holeSet?.[cid()]) || 0;
@@ -545,14 +548,16 @@ export function gotoHole(i, fit) {
 
 function renderStrategy() {
   const h = curHole();
+  const note = noteOf(h);
+  const guide = note ? [`<li class="guide-note"><b>コースガイド</b> ${esc(note)}</li>`] : [];
   if (!h || !h.center || !features) {
     strat = null;
-    $('#holeTips').innerHTML = `<li class="muted">${state.course ? 'このホールはまだ登録されていません。下の「ホールを登録」でティーとグリーンをタップするか、プレー中に「近くのグリーン」から選ぶと距離と攻略が出ます。' : 'コースを選んでください。'}</li>`;
+    $('#holeTips').innerHTML = guide.join('') + `<li class="muted">${state.course ? 'このホールはまだ登録されていません。下の「ホールを登録」でティーとグリーンをタップするか、プレー中に「近くのグリーン」から選ぶと距離と攻略が出ます。' : 'コースを選んでください。'}</li>`;
     return;
   }
   strat = holeStrategy({ ...h, center: holeCenter(h) }, features, state.clubs);
   const estNote = h.source === 'est' ? ['このホールのティー位置と長さ・パーは地図からの推定です。ティーショットの距離やハザードまでの距離は目安として見てください。'] : [];
-  $('#holeTips').innerHTML = [...estNote, ...strat.tips].map((t, i) => `<li${estNote.length && i === 0 ? ' class="muted"' : ''}>${esc(t)}</li>`).join('');
+  $('#holeTips').innerHTML = guide.join('') + [...estNote, ...strat.tips].map((t, i) => `<li${estNote.length && i === 0 ? ' class="muted"' : ''}>${esc(t)}</li>`).join('');
 }
 
 // ---------------- main render ----------------
@@ -883,7 +888,7 @@ function renderRoundBar() {
 /** everything the caddie says, from the same numbers the screen shows */
 function voiceInfo() {
   const h = curHole(); const c = holeCenter(h); const o = originFor(h, c);
-  const base = { unit: unit(), holeNo: h && h.no <= 100 ? h.no : null, holeName: h?.nineName ? `${h.nineName}の${h.dispNo ?? h.no}番` : null, par: h && !h.parEst ? h.par : null };
+  const base = { note: noteOf(h), unit: unit(), holeNo: h && h.no <= 100 ? h.no : null, holeName: h?.nineName ? `${h.nineName}の${h.dispNo ?? h.no}番` : null, par: h && !h.parEst ? h.par : null };
   if (!h || !c || !o) return { ...base, center: NaN };
   const g = greenDist(o, h.green, h.center || c);
   const pin = cid() ? todayPins()[h.key] : null;
@@ -904,7 +909,7 @@ function voiceInfo() {
   const st = gps.state || {};
   const slope = curSlope && ['high', 'mid'].includes(curSlope.conf?.level) ? { pct: curSlope.pct, dir: compass(curSlope.downBearing), level: curSlope.conf.level } : null;
   return {
-    ...base, preview: o !== me, estimated: h.source === 'est',
+    ...base, preview: o !== me, atTee: !!h.tee && dist(o, h.tee) < 45, estimated: h.source === 'est',
     gpsPoor: o === me && (gps.isStale(Date.now()) || ['poor', 'wait'].includes(st.mode) || (meAcc ?? 0) > 15),
     center: g.center, front: g.front, back: g.back, pin: pin ? m2y(dist(o, pin)) : null,
     playsLike: pl.yards, club: rc?.club, alt: rc?.alt, layup: !!rc?.layup, leave: rc ? pl.yards - rc.club.carry : 0,

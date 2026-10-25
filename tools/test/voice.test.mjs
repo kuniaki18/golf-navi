@@ -83,3 +83,11 @@ test('in-app browsers are detected and get a way out', async () => {
   assert.match(speechHelp(null, safari), /マナーモード/);
   assert.match(speechHelp(null, chrome), /Google 音声サービス/);
 });
+
+test('the course-guide note is read on the tee, not mid-hole', () => {
+  const base = { unit: 'yd', holeNo: 2, par: 4, center: 334 };
+  const atTee = caddieScript({ ...base, note: '打ち上げ。右の林はワンペナ', atTee: true }).join('');
+  assert.match(atTee, /コースガイドより。打ち上げ。右の林はワンペナ。/);
+  const mid = caddieScript({ ...base, center: 140, note: '打ち上げ。右の林はワンペナ', atTee: false }).join('');
+  assert.doesNotMatch(mid, /コースガイド/);
+});

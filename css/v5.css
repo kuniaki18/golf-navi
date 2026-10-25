@@ -239,3 +239,5 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .em-steps b { display: block; }
 .em-big { min-height: 54px; font-size: 1.05rem; width: 100%; border-radius: 14px; }
 .em-auto { margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: color-mix(in srgb, var(--green) 12%, var(--surface)); border-radius: 12px; padding: 8px 10px; font-size: .88rem; }
+#holeTips .guide-note { list-style: none; margin: 0 0 8px -14px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--flag) 14%, transparent); }
+#holeTips .guide-note b { display: inline-block; margin-right: 6px; font-size: 12px; padding: 1px 6px; border-radius: 6px; background: var(--flag); color: #1a1400; }
