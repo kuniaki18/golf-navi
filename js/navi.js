@@ -452,7 +452,8 @@ function rebuild(first) {
   // during a started round the holes follow the plan (front nine → back nine); otherwise one course at a time
   holes = roundActive() ? planHoles(allHoles, state.current.plan) : allHoles.filter((h) => (h.set || 0) === activeSet());
   // official course of a 27-hole club played on map holes: par / yardage from that course's scorecard row
-  for (const h of holes) { if (h.scIdx == null) continue; const sc = scRow(h, scorecard); if (sc) { h.par = sc.par; h.parEst = false; h.officialY = ladiesEst(sc) ? Math.round(sc.yd * LADIES_RATIO) : ydOf(sc); h.teeEst = ladiesEst(sc); } }
+  // (also holes the map does not have yet: they still get par / yardage from the card)
+  for (const h of holes) { if (h.scIdx == null && h.officialY) continue; const sc = scRow(h, scorecard); if (sc) { h.par = sc.par; h.parEst = false; h.officialY = ladiesEst(sc) ? Math.round(sc.yd * LADIES_RATIO) : ydOf(sc); h.teeEst = ladiesEst(sc); } }
   holeIdx = Math.max(0, holes.findIndex((h) => h.key === keep));
   const btn = $('#setBtn');
   btn.hidden = sets.length < 2 || roundActive();

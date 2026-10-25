@@ -273,6 +273,21 @@ function assignSets(holes) {
   // biggest chains first (main courses), then number them A, B, C…
   chains.sort((a, b) => b.length - a.length || (a[0].no ?? 0) - (b[0].no ?? 0));
   chains.forEach((ch, i) => ch.forEach((h) => (h.set = i)));
+  // when mappers named the holes after their course ("East Hole 1", "西 3番"), the names win over the routing guess;
+  // each name keeps the set number most of its holes already had, so saved registrations stay on the same course
+  const label = (n) => { const m = String(n || '').match(/\b(east|west|north|south|central|middle)\b|(東|西|南|北|中)/i); return m ? (m[1] || m[2]).toLowerCase() : null; };
+  const numbered = holes.filter((h) => h.no != null && h.no <= 18);
+  const named = numbered.filter((h) => label(h.name));
+  const names = [...new Set(named.map((h) => label(h.name)))];
+  if (names.length < 2 || named.length < numbered.length * 0.8) return;
+  const votes = names.map((nm) => { const c = {}; for (const h of named) if (label(h.name) === nm) c[h.set] = (c[h.set] || 0) + 1; return { nm, c }; });
+  const taken = new Set(), setOf = {};
+  for (const v of votes.sort((a, b) => Math.max(...Object.values(b.c)) - Math.max(...Object.values(a.c)))) {
+    const best = Object.entries(v.c).sort((a, b) => b[1] - a[1]).map(([s]) => Number(s)).find((s) => !taken.has(s));
+    const s = best ?? Math.max(-1, ...taken, ...holes.map((h) => h.set)) + 1;
+    taken.add(s); setOf[v.nm] = s;
+  }
+  for (const h of named) h.set = setOf[label(h.name)];
 }
 export const setLabel = (i) => `コース${'ABCDEFGH'[i] || i + 1}`;
 

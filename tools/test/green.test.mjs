@@ -56,3 +56,18 @@ test('slope cache key follows the green, not the hole number', () => {
   assert.notEqual(greenKey(g1), greenKey(g2));
   assert.equal(greenKey(g1), greenKey({ ...g1 }));
 });
+
+test('36-hole club: holes named after their course (East / West) stay on that course even if the routing is confusing', () => {
+  const mk = (label, x0, no, swapTo) => {
+    const x = swapTo ?? x0; // East 1 drawn next to the West course (as at 霞ヶ関)
+    return { ref: no, par: 4, name: `${label} Hole ${no}`, pts: [at(x, no * 400), at(x, no * 400 + 300)], distTag: null };
+  };
+  const holes = [];
+  for (let n = 1; n <= 18; n++) { holes.push(mk('West', 0, n)); holes.push(mk('East', 3000, n, n === 1 ? 20 : undefined)); }
+  const f = { holes, greens: [], tees: [], bunkers: [], water: [], fairways: [], pins: [] };
+  const out = buildHoles(f, {});
+  const setOf = (label) => new Set(out.filter((h) => h.name?.startsWith(label)).map((h) => h.set));
+  assert.equal(setOf('East').size, 1);
+  assert.equal(setOf('West').size, 1);
+  assert.notDeepEqual([...setOf('East')], [...setOf('West')]);
+});
