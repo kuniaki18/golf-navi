@@ -53,3 +53,10 @@ test('石坂GC: OUT 1–9 drawn, each on its own mapped green; IN keeps its esti
   assert.deepEqual(out.map((h) => h.no), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
   assert.equal(new Set(out.map((h) => h.green?.id)).size, 9);
 });
+
+test('清澄GC: all 18 holes drawn from the club map, each on its own mapped green', () => {
+  const k = JSON.parse(fs.readFileSync(new URL('../../data/c/osm-way-188607321.json', import.meta.url)));
+  const holes = buildHoles(parseCompact(k)).filter((h) => h.drawn);
+  assert.deepEqual(holes.map((h) => h.no), Array.from({ length: 18 }, (_, i) => i + 1));
+  assert.equal(new Set(holes.map((h) => h.green?.id)).size, 18);
+});
