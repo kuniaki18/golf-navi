@@ -60,3 +60,10 @@ test('清澄GC: all 18 holes drawn from the club map, each on its own mapped gre
   assert.deepEqual(holes.map((h) => h.no), Array.from({ length: 18 }, (_, i) => i + 1));
   assert.equal(new Set(holes.map((h) => h.green?.id)).size, 18);
 });
+
+test('JMGおごせGC: all 18 holes drawn from the club map, each on its own mapped green', () => {
+  const k = JSON.parse(fs.readFileSync(new URL('../../data/c/osm-way-188607317.json', import.meta.url)));
+  const holes = buildHoles(parseCompact(k)).filter((h) => h.drawn);
+  assert.deepEqual(holes.map((h) => h.no), Array.from({ length: 18 }, (_, i) => i + 1));
+  assert.equal(new Set(holes.map((h) => h.green?.id)).size, 18);
+});
