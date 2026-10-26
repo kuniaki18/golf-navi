@@ -132,7 +132,7 @@ export function parseCompact(j) {
   const f = EMPTY();
   for (const h of j.holes || []) {
     const p = pts(h.g); const ref = parseInt(h.r, 10);
-    f.holes.push({ id: `h${seq++}`, pts: p, c: centroid(p), ref: Number.isFinite(ref) ? ref : null, par: h.p || null, hcp: h.h || null, distTag: h.d || null, name: h.n || '', drawn: !!h.m });
+    f.holes.push({ id: `h${seq++}`, pts: p, c: centroid(p), ref: Number.isFinite(ref) ? ref : null, par: h.p || null, hcp: h.h || null, distTag: h.d || null, name: h.n || '', drawn: !!h.m, fixedSet: Number.isInteger(h.s) ? h.s : null });
   }
   for (const [k, arr] of [['greens', j.greens], ['tees', j.tees], ['bunkers', j.bunkers], ['water', j.water], ['fairways', j.fairways]]) {
     for (const rings of arr || []) { const x = poly(rings, k); if (x.c) f[k].push(x); }
@@ -186,10 +186,12 @@ export function buildHoles(f, userHoles = {}) {
     const end = h.pts[h.pts.length - 1];
     const green = nearestGreen(f, end, 90);
     const lengthM = h.distTag && h.distTag > 50 ? h.distTag : null;
-    return { no: h.ref, par: h.par, hcp: h.hcp, name: h.name, line: h.pts, tee: h.pts[0], green, center: green ? green.c : end, lengthM: lengthM || lineLength(h.pts), source: 'osm', drawn: !!h.drawn };
+    return { no: h.ref, par: h.par, hcp: h.hcp, name: h.name, line: h.pts, tee: h.pts[0], green, center: green ? green.c : end, lengthM: lengthM || lineLength(h.pts), source: 'osm', drawn: !!h.drawn, fixedSet: h.fixedSet ?? null };
   });
   holes.sort((a, b) => (a.no ?? 99) - (b.no ?? 99));
   assignSets(holes);
+  // holes we drew for a 27-hole club carry their course (scorecard order), so no routing guess is needed
+  for (const h of holes) if (h.fixedSet != null) h.set = h.fixedSet;
   for (const h of holes) if (h.no != null) h.key = h.set ? `${h.no}-${h.set + 1}` : String(h.no);
   let i = 0;
   for (const h of holes) if (h.no == null) { h.no = 100 + (++i); h.key = `x${i}`; }

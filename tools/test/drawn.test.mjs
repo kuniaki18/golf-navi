@@ -25,3 +25,15 @@ test("a hand-registered hole of believable length replaces a drawn hole; a stray
   assert.ok(buildHoles(f, { 2: { tee: d2.tee, green: d2.center, learned: true } }).find((h) => h.key === '2').drawn);
   assert.ok(buildHoles(f, { 3: { tee: d2.tee } }).find((h) => h.key === '3').drawn);
 });
+
+test('川越CC: 27 drawn holes keep their course from the scorecard order (中・西・東)', () => {
+  const k = JSON.parse(fs.readFileSync(new URL('../../data/c/osm-way-592231989.json', import.meta.url)));
+  const holes = buildHoles(parseCompact(k)).filter((h) => h.no <= 9);
+  assert.equal(holes.length, 27);
+  for (const s of [0, 1, 2]) {
+    const nine = holes.filter((h) => h.set === s);
+    assert.deepEqual(nine.map((h) => h.no).sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    for (const h of nine) { assert.ok(h.drawn); assert.ok(h.green, `${h.key} has a mapped green`); assert.equal(h.key, s ? `${h.no}-${s + 1}` : String(h.no)); }
+  }
+  assert.equal(holes.find((h) => h.key === '1').name, '中1番');
+});
