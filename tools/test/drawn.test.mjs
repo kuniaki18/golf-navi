@@ -46,3 +46,10 @@ test('東松山CC: the 9 drawn 東 holes are course 1; 中 and 西 keep their es
   for (const h of east) { assert.equal(h.set, 0); assert.ok(h.green, `${h.key} has a mapped green`); }
   assert.ok(Object.keys(f.estHoles).length > 0, 'estimates for the other nines are kept');
 });
+
+test('石坂GC: OUT 1–9 drawn, each on its own mapped green; IN keeps its estimate', () => {
+  const k = JSON.parse(fs.readFileSync(new URL('../../data/c/osm-way-188607329.json', import.meta.url)));
+  const out = buildHoles(parseCompact(k)).filter((h) => h.drawn);
+  assert.deepEqual(out.map((h) => h.no), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.equal(new Set(out.map((h) => h.green?.id)).size, 9);
+});
