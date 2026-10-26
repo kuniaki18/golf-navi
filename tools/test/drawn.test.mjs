@@ -37,3 +37,12 @@ test('川越CC: 27 drawn holes keep their course from the scorecard order (中�
   }
   assert.equal(holes.find((h) => h.key === '1').name, '中1番');
 });
+
+test('東松山CC: the 9 drawn 東 holes are course 1; 中 and 西 keep their estimates', () => {
+  const k = JSON.parse(fs.readFileSync(new URL('../../data/c/osm-way-592218693.json', import.meta.url)));
+  const f = parseCompact(k);
+  const east = buildHoles(f).filter((h) => h.drawn);
+  assert.equal(east.length, 9);
+  for (const h of east) { assert.equal(h.set, 0); assert.ok(h.green, `${h.key} has a mapped green`); }
+  assert.ok(Object.keys(f.estHoles).length > 0, 'estimates for the other nines are kept');
+});
