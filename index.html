@@ -250,6 +250,11 @@
     <h1>スコアカード</h1>
     <button class="btn small" id="btnNewRound">新しいラウンド</button>
   </div>
+  <div class="card card-shot">
+    <div class="card-head"><h2>スコアカードを撮って記録</h2><label class="btn small primary file-btn">撮影する<input type="file" id="cardShot" accept="image/*" capture="environment"></label></div>
+    <p class="muted">紙のスコアカードを撮ると、全員の打数を読み取って、日付・ゴルフ場と一緒にラウンドとして記録します。カードの写真は思い出に残り、LINE やメールで共有できます。ギャラリーの写真も選べます。</p>
+    <div class="muted" id="cardShotStatus"></div>
+  </div>
   <div class="card" id="roundCard">
     <div class="round-head">
       <input id="roundCourse" placeholder="コース名" aria-label="コース名">
@@ -287,6 +292,11 @@
     <div class="mem-grid" id="memGrid"></div>
     <textarea id="memText" rows="3" placeholder="今日のひとこと（ナイスショット、名場面、次の課題…）" aria-label="今日のひとこと"></textarea>
     <div class="btn-row"><button class="btn" id="btnMemCard">思い出カードを作って共有</button></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>月のスコア表</h2><div class="month-nav"><button class="btn small" id="monthPrev" aria-label="前の月">‹</button><b id="monthLabel"></b><button class="btn small" id="monthNext" aria-label="次の月">›</button></div></div>
+    <div id="monthBody"></div>
+    <div class="btn-row"><button class="btn" id="monthShare">月のスコア表を共有</button></div>
   </div>
   <h2 class="sec-title">過去のラウンド</h2>
   <div id="roundHistory" class="history"></div>
@@ -745,6 +755,8 @@
     <div class="ob-nav"><button class="btn" id="obBack" hidden>戻る</button><span class="ob-dots" id="obDots"></span><button class="btn primary" id="obNext">次へ</button></div>
   </div>
 </div>
+<div class="sheet" id="sharePanel" hidden></div>
+<div class="sheet" id="cardRecPanel" hidden></div>
 <div class="photo-viewer" id="photoViewer" hidden><img id="photoViewerImg" alt=""><button class="btn small" id="memClose">閉じる</button></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>

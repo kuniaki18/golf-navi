@@ -241,3 +241,20 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .em-auto { margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: color-mix(in srgb, var(--green) 12%, var(--surface)); border-radius: 12px; padding: 8px 10px; font-size: .88rem; }
 #holeTips .guide-note { list-style: none; margin: 0 0 8px -14px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--flag) 14%, transparent); }
 #holeTips .guide-note b { display: inline-block; margin-right: 6px; font-size: 12px; padding: 1px 6px; border-radius: 6px; background: var(--flag); color: #1a1400; }
+
+/* share screen, scorecard record, monthly sheet */
+.sheet { position: fixed; inset: 0; z-index: 1400; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; justify-content: center; }
+.sheet-body { background: var(--surface); color: var(--fg); width: 100%; max-width: 720px; max-height: 92vh; overflow-y: auto; border-radius: 16px 16px 0 0; padding: 16px 16px max(16px, env(safe-area-inset-bottom, 0px)); box-shadow: var(--shadow); }
+.share-prev { display: block; max-width: 100%; max-height: 38vh; margin: 8px auto; border-radius: 10px; }
+.share-text { white-space: pre-wrap; font: inherit; font-size: .85rem; background: var(--surface-2); border-radius: 10px; padding: 10px; max-height: 22vh; overflow-y: auto; }
+.share-btns { display: grid; gap: 8px; margin: 10px 0; }
+.share-btns .btn { width: 100%; justify-content: center; text-align: center; }
+.share-line { background: #06c755; color: #fff; border-color: #06c755; }
+.cr-fields { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; margin: 8px 0; }
+.cr-fields label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; }
+.cr-table td input[type="radio"] { width: 20px; height: 20px; }
+.month-nav { display: flex; align-items: center; gap: 8px; }
+.month-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.month-table th, .month-table td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+.month-table tr.best td { background: rgba(242,201,76,.18); }
+@media (max-width: 420px) { .cr-fields { grid-template-columns: 1fr; } }

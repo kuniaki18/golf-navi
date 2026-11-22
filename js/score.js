@@ -1,9 +1,12 @@
 // Scorecard: current round entry, totals, history.
-import { $, $$, esc, toast, fmtDate, uid, shareOrDownload } from './util.js';
+import { $, $$, esc, toast, fmtDate, uid } from './util.js';
 import { state, save } from './store.js';
 import { renderAll as renderMemory, snapshotWeather, sums, rankPlayers } from './memory.js';
 import { readScorecard } from './ocr.js';
 import { submitPlayersToComp } from './group.js';
+import { openShare } from './share.js';
+import { initCardRecord } from './cardrecord.js';
+import { initMonthly, renderMonthly } from './monthly.js';
 
 let cur = 0;
 
@@ -46,9 +49,12 @@ export function initScore(onSaved) {
     const copy = JSON.parse(JSON.stringify(r));
     if (i >= 0) state.rounds[i] = copy; else state.rounds.unshift(copy);
     state.rounds.sort((a, b) => (a.date < b.date ? 1 : -1));
-    save('rounds'); toast(`保存しました（${total(r).strokes}）`); render(); onSaved?.();
+    save('rounds'); toast(`保存しました（${total(r).strokes}）`); render(); renderMonthly(); onSaved?.();
   };
-  $('#btnShareRound').onclick = () => shareOrDownload({ title: 'スコア', text: scoreText(state.current) });
+  $('#btnShareRound').onclick = async () => {
+    const r = state.current, { buildCard } = await import('./memory.js');
+    openShare({ title: `${r.course || 'スコア'} ${r.date}`, text: scoreText(r), blob: r.holes.some((h) => h.strokes) ? await buildCard(r) : null, filename: `golf-${r.date}.jpg` });
+  };
   $('#roundHistory').onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const id = b.dataset.id;
@@ -56,10 +62,16 @@ export function initScore(onSaved) {
     if (b.dataset.act === 'mem') window.dispatchEvent(new CustomEvent('open-memory', { detail: id }));
     if (b.dataset.act === 'del') {
       if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = '本当に削除'; return; }
-      state.rounds = state.rounds.filter((x) => x.id !== id); save('rounds'); render(); onSaved?.();
+      state.rounds = state.rounds.filter((x) => x.id !== id); save('rounds'); render(); renderMonthly(); onSaved?.();
     }
   };
   initPlayers();
+  initMonthly();
+  initCardRecord({ onSaved: async (r) => {
+    render(); renderMonthly(); onSaved?.();
+    const { buildCard } = await import('./memory.js');
+    openShare({ title: `${r.course || 'スコア'} ${r.date}`, text: scoreText(r), blob: await buildCard(r), filename: `golf-${r.date}.jpg` });
+  } });
   window.addEventListener('round-changed', () => render());
   window.addEventListener('navi-hole', (e) => {
     const no = e.detail.idx != null ? e.detail.idx + 1 : e.detail.no; // planned round: the column in playing order

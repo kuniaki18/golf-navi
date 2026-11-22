@@ -1,7 +1,8 @@
 // Round memories: photos (IndexedDB, compressed), today's members and their final scores, a note,
 // the weather of the day, an album view per round, and a shareable memory card image.
-import { $, esc, toast, shareOrDownload, uid } from './util.js';
+import { $, esc, toast, uid } from './util.js';
 import { state, save } from './store.js';
+import { openShare } from './share.js';
 
 // ---------------- IndexedDB photo store ----------------
 let dbp = null;
@@ -129,7 +130,9 @@ export function sums(holes = [], total) {
 export async function shareCard(r) {
   if (!r) return;
   const blob = await buildCard(r);
-  await shareOrDownload({ title: `${r.course} ${r.date}`, text: `${r.date} ${r.course} #KUNIKUNIゴルフ`, filename: `golf-${r.date}.jpg`, blob });
+  const ranking = rankPlayers(r).map((p, k) => `${k + 1}. ${p.name} ${p.total}`).join('\n');
+  const text = `⛳ ${r.date} ${r.course || ''}${ranking ? '\n' + ranking : ''}${r.memo ? `\n「${r.memo}」` : ''}\n#KUNIKUNIゴルフ`;
+  openShare({ title: `${r.course || 'ゴルフ'} ${r.date}`, text, filename: `golf-${r.date}.jpg`, blob });
 }
 
 export async function buildCard(r) {
