@@ -109,3 +109,17 @@ test('laying up from the fairway names the hazards around the landing spot', () 
   assert.match(t, /落とし所の右側に池。手前まで175、越えるまで205ヤード/);
   assert.match(t, /左サイドへ運びましょう/);
 });
+
+test('with today\'s pin: the club is for the pin, with the wind / slope corrections and where to aim in a crosswind', () => {
+  const t = say({ center: 152, pin: 145, pinSet: true, playsLike: 158, adj: [{ kind: 'head', yards: 8 }, { kind: 'up', yards: 5 }, { kind: 'cold', yards: 1 }],
+    cross: 4, drift: 8 });
+  assert.match(t, /ピンまで145ヤード/);
+  assert.match(t, /ピンまで、風や高低差を入れた打つ距離は158ヤード（向かい風でプラス8、打ち上げでプラス5）/);
+  assert.doesNotMatch(t, /気温/); // corrections under 2 y are not read out
+  assert.match(t, /左からの横風で、ボールは約8ヤード右に流されます。ピンの左8ヤードを狙いましょう/);
+  assert.doesNotMatch(t, /左目から風に乗せましょう/);
+  // a tailwind and downhill shorten the shot
+  assert.match(say({ playsLike: 140, adj: [{ kind: 'tail', yards: -6 }, { kind: 'down', yards: -6 }] }), /追い風でマイナス6、打ち下ろしでマイナス6/);
+  // a small drift: the short advice only
+  assert.match(say({ cross: 3, drift: 2 }), /左目から風に乗せましょう/);
+});

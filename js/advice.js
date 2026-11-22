@@ -15,25 +15,25 @@ const LIE = {
  * @param {object} c      { head: m/s (+ head / − tail), elevM: target minus player (m), lie, tempC }
  */
 export function playsLike(yards, c = {}) {
-  const parts = [];
+  const parts = [], adj = []; // adj: the same corrections for the voice caddie, { kind, yards }
   let d = yards;
   if (c.head) {
     // rule of thumb: headwind costs ~1.8%/m·s, tailwind helps ~1%/m·s
-    const adj = c.head > 0 ? yards * 0.018 * c.head : yards * 0.01 * c.head;
-    d += adj; parts.push(`${c.head > 0 ? '向かい' : '追い'}風 ${Math.abs(c.head).toFixed(1)}m/s ${sign(adj)}y`);
+    const v = c.head > 0 ? yards * 0.018 * c.head : yards * 0.01 * c.head;
+    d += v; parts.push(`${c.head > 0 ? '向かい' : '追い'}風 ${Math.abs(c.head).toFixed(1)}m/s ${sign(v)}y`); adj.push({ kind: c.head > 0 ? 'head' : 'tail', yards: v });
   }
   if (c.elevM) {
     // uphill plays ~1y per 1y of rise; downhill helps a little less (longer hang time, steeper landing)
-    const adj = m2y(c.elevM) * (c.elevM > 0 ? 1.0 : 0.8);
-    d += adj; parts.push(`${c.elevM > 0 ? '打ち上げ' : '打ち下ろし'} ${Math.abs(c.elevM).toFixed(0)}m ${sign(adj)}y`);
+    const v = m2y(c.elevM) * (c.elevM > 0 ? 1.0 : 0.8);
+    d += v; parts.push(`${c.elevM > 0 ? '打ち上げ' : '打ち下ろし'} ${Math.abs(c.elevM).toFixed(0)}m ${sign(v)}y`); adj.push({ kind: c.elevM > 0 ? 'up' : 'down', yards: v });
   }
   if (Number.isFinite(c.tempC) && c.tempC < 15) {
-    const adj = yards * 0.01 * ((15 - c.tempC) / 5);
-    if (adj >= 1) { d += adj; parts.push(`気温${Math.round(c.tempC)}℃ ${sign(adj)}y`); }
+    const v = yards * 0.01 * ((15 - c.tempC) / 5);
+    if (v >= 1) { d += v; parts.push(`気温${Math.round(c.tempC)}℃ ${sign(v)}y`); adj.push({ kind: 'cold', yards: v }); }
   }
   const lie = LIE[c.lie] || LIE.fairway;
-  if (lie.f !== 1) { const before = d; d *= lie.f; parts.push(`${lie.label} ${sign(d - before)}y`); }
-  return { yards: d, parts };
+  if (lie.f !== 1) { const before = d; d *= lie.f; parts.push(`${lie.label} ${sign(d - before)}y`); adj.push({ kind: 'lie', label: lie.label, yards: d - before }); }
+  return { yards: d, parts, adj };
 }
 const sign = (v) => (v >= 0 ? '+' : '−') + Math.abs(Math.round(v));
 
@@ -73,6 +73,14 @@ export function headComponent(wx, shotBearing) {
   if (!wx || !Number.isFinite(wx.speed)) return 0;
   const rel = ((wx.dir - shotBearing) * Math.PI) / 180;
   return wx.speed * 0.8 * Math.cos(rel);
+}
+/**
+ * how far a crosswind moves the ball sideways (yards), for a shot of carryY yards.
+ * Rule of thumb: about 9y for a 150y shot in 4.5 m/s (10 mph) of crosswind; cross > 0 = from the left (ball goes right)
+ */
+export function windDrift(cross, carryY) {
+  if (!Number.isFinite(cross) || !(carryY > 0)) return 0;
+  return 2.0 * cross * (carryY / 150);
 }
 export function crossComponent(wx, shotBearing) {
   if (!wx || !Number.isFinite(wx.speed)) return 0;

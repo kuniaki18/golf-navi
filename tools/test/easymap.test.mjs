@@ -33,3 +33,17 @@ test('advance to the next hole only with a score, a known green and after walkin
   assert.equal(shouldAdvance({ strokes: 5, green: g, me: at(20, 0), hasNext: true }), false);
   assert.equal(shouldAdvance({ strokes: 5, green: g, me: at(70, 0), hasNext: false }), false);
 });
+
+test('hands-free caddie at the ball: speaks after standing still at a new spot, not on the tee, green or while walking', async () => {
+  const { atBall } = await import('../../js/easymap.js');
+  const pin = at(0, 0), tee = at(0, -350);
+  const run = (pts, ctx) => { let st = null, r; pts.forEach((p, i) => { r = atBall(st, p, i * 1000, { pin, tee, ...ctx }); st = r.st; }); return r.speak; };
+  const still = (p, n) => Array(n).fill(p);
+  assert.equal(run(still(at(0, -150), 10), {}), true);
+  assert.equal(run(still(at(0, -150), 5), {}), false);                        // not long enough
+  assert.equal(run(Array.from({ length: 12 }, (_, i) => at(0, -200 + i * 1.5)), {}), false); // walking
+  assert.equal(run(still(at(0, -340), 12), {}), false);                       // on the tee
+  assert.equal(run(still(at(0, -15), 12), {}), false);                        // on / next to the green
+  assert.equal(run(still(at(0, -150), 12), { last: at(0, -160) }), false);    // already spoken here
+  assert.equal(run(still(at(0, -150), 12), { acc: 30 }), false);              // poor GPS
+});

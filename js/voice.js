@@ -21,6 +21,8 @@ export function clubSpeech(name) {
  *   unit: 'yd'|'m', holeNo, par, preview (distance from the tee, not the player), estimated (hole layout estimated),
  *   gpsPoor, center, front, back, pin            (yards; front/back/pin may be null)
  *   playsLike, club: {name, carry}, alt, layup, leave,
+ *   pinSet (today's pin is set: the club is for the pin), adj: [{ kind: 'head'|'tail'|'up'|'down'|'cold'|'lie', yards }],
+ *   drift (yards the crosswind moves this club's ball; + = to the right),
  *   head (m/s, + = into the wind), cross (m/s, + = from the left), gust, elevM, windKnown,
  *   greenHazards: [{ type: 'water'|'bunker', where: '手前'|'奥'|'左'|'右', front, carry }],
  *   slope: { pct, dir, level } | null           (only when the slope confidence is high/mid)
@@ -30,6 +32,13 @@ export function clubSpeech(name) {
 /** a strategy tip as it should be spoken: "230y" → "230ヤード", marks read aloud */
 export function spokenTip(t) {
   return String(t || '').replace(/(\d+)y/g, '$1ヤード').replace(/◎/g, 'おすすめ').replace(/（/g, '、').replace(/）/g, '、').replace(/、([。、])/g, '$1');
+}
+
+/** the corrections behind the plays-like distance, as spoken: "向かい風でプラス8、打ち上げでプラス4" */
+export function adjSpeech(adj, n = (v) => Math.round(v)) {
+  const NAME = { head: '向かい風', tail: '追い風', up: '打ち上げ', down: '打ち下ろし', cold: '気温が低いので' };
+  return (adj || []).filter((a) => Math.abs(n(a.yards)) >= 2)
+    .map((a) => `${a.kind === 'lie' ? a.label : NAME[a.kind]}${a.kind === 'cold' ? '' : 'で'}${a.yards > 0 ? 'プラス' : 'マイナス'}${Math.abs(n(a.yards))}`).join('、');
 }
 
 export function caddieScript(d) {
@@ -64,11 +73,19 @@ export function caddieScript(d) {
   if (d.club) {
     if (d.layup) s.push(`届かない距離です。${clubSpeech(d.club.name)}で、残り約${n(d.leave)}${u}を残しましょう。`);
     else {
-      const pl = Math.round(d.playsLike) !== Math.round(d.center) ? `打つ距離は${n(d.playsLike)}${u}。` : '';
+      const to = d.pinSet && Number.isFinite(d.pin) ? d.pin : d.center;
+      const why = adjSpeech(d.adj, n);
+      const pl = Math.round(d.playsLike) !== Math.round(to) ? `${d.pinSet ? 'ピンまで、' : ''}${why ? '風や高低差を入れた' : ''}打つ距離は${n(d.playsLike)}${u}${why ? `（${why}）` : ''}。` : '';
       s.push(`${pl}おすすめは${clubSpeech(d.club.name)}。${d.alt ? `迷ったら${clubSpeech(d.alt.name)}。` : ''}`);
     }
   }
-  if (d.windKnown && Math.abs(d.cross) >= 2) s.push(`横風なので、${d.cross > 0 ? '左' : '右'}目から風に乗せましょう。`);
+  // crosswind: how far this shot is blown sideways, and where to aim instead
+  const drift = d.windKnown && !d.layup && Number.isFinite(d.drift) ? Math.round(Math.abs(d.unit === 'm' ? y2m(d.drift) : d.drift)) : 0;
+  if (drift >= 3) {
+    const goes = d.drift > 0 ? '右' : '左', aim = d.drift > 0 ? '左' : '右';
+    s.push(`${d.cross > 0 ? '左' : '右'}からの横風で、ボールは約${drift}${u}${goes}に流されます。${d.pinSet ? 'ピン' : 'グリーンセンター'}の${aim}${drift}${u}を狙いましょう。`);
+  } else if (d.windKnown && Math.abs(d.cross) >= 2) s.push(`横風なので、${d.cross > 0 ? '左' : '右'}目から風に乗せましょう。`);
+  if (d.windKnown && !d.layup && Number.isFinite(d.gust) && d.gust >= 8 && d.head > 0) s.push('突風が吹いたら、もう1番手大きめが安心です。');
 
   // on the tee of a par 4 / 5: the tee-shot plan (landing-zone hazards, which side to aim, doglegs, the par-5 plan)
   const plan = (d.teePlan || []).map(spokenTip).filter(Boolean);
@@ -102,7 +119,7 @@ export function caddieScript(d) {
     else if (by['奥'] && !by['手前']) s.push(`${when}奥はトラブル。手前から攻めましょう。`);
     else if (safe && (by['左'] || by['右'])) s.push(`${when}外すなら${safe}サイドが安全です。グリーンの${safe}寄りを狙いましょう。`);
     else s.push(`${when}グリーンセンターを狙いましょう。`);
-  } else s.push(d.layup ? 'グリーン周りに大きなハザードはありません。' : 'グリーン周りに大きなハザードはありません。グリーンセンターを狙いましょう。');
+  } else s.push(d.layup || drift >= 3 ? 'グリーン周りに大きなハザードはありません。' : `グリーン周りに大きなハザードはありません。${d.pinSet ? 'ピン' : 'グリーンセンター'}を狙いましょう。`);
 
   if (d.slope) s.push(`グリーンは${d.slope.dir}方向へ下る傾斜、約${d.slope.pct.toFixed(0)}パーセント。標高データからの目安です。`);
   return s;

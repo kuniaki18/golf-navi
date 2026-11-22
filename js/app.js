@@ -97,6 +97,8 @@ function initSettings() {
   $('#setSun').onchange = () => setSun($('#setSun').checked);
   $('#setAutoCourse').checked = s.autoCourse !== false;
   $('#setAutoCourse').onchange = () => { s.autoCourse = $('#setAutoCourse').checked; save('settings'); };
+  $('#setAutoVoiceBall').checked = s.autoVoiceBall !== false;
+  $('#setAutoVoiceBall').onchange = () => { s.autoVoiceBall = $('#setAutoVoiceBall').checked; save('settings'); };
   $('#setAutoVoice').checked = !!s.autoVoice;
   $('#setAutoVoice').onchange = () => { s.autoVoice = $('#setAutoVoice').checked; save('settings'); };
   $('#setWake').checked = s.wake !== false;

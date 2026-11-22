@@ -3,7 +3,7 @@
 import { $, $$, esc, toast, dist, bearing, m2y, y2m, md, uid, fmtDate } from './util.js';
 import { state, save, getCourseCache, putCourseCache, getNote, setNote } from './store.js';
 import { courseFeatures, buildHoles, nearestHole, matchCourse, greensNear, setLabel } from './osm.js';
-import { playsLike, recommendClub, weather, headComponent, crossComponent, elevations, elevationSource, compass } from './advice.js';
+import { playsLike, recommendClub, weather, headComponent, crossComponent, windDrift, elevations, elevationSource, compass } from './advice.js';
 import { holeStrategy, hazardDistancesFrom } from './strategy.js';
 import { askClaude, COACH_SYSTEM, hasAI, needAI } from './ai.js';
 import { HoleView, IMAGERY, setImagery } from './holeview.js';
@@ -14,7 +14,7 @@ import { submitHole, communityHoles, communityDoc, submitScorecard } from './com
 import { dataQuality, checkScorecard } from './coursedata.js';
 import { learnHoles } from './learn.js';
 import { briefingScript } from './briefing.js';
-import { dwellOnGreen, shouldAdvance } from './easymap.js';
+import { dwellOnGreen, shouldAdvance, atBall } from './easymap.js';
 import { computeStats } from './analysis.js';
 import { ninesOf, defaultPlan, planHoles, planPars, scRow } from './round.js';
 import { beginRound } from './score.js';
@@ -977,8 +977,9 @@ function voiceInfo() {
     ...base, preview: o !== me, atTee: onTee, estimated: h.source === 'est',
     teePlan: onTee && h.par >= 4 ? strat?.teePlan || [] : [], layupHazards,
     gpsPoor: o === me && (gps.isStale(Date.now()) || ['poor', 'wait'].includes(st.mode) || (meAcc ?? 0) > 15),
-    center: g.center, front: g.front, back: g.back, pin: pin ? m2y(dist(o, pin)) : null,
-    playsLike: pl.yards, club: rc?.club, alt: rc?.alt, layup: !!rc?.layup, leave: rc ? pl.yards - rc.club.carry : 0,
+    center: g.center, front: g.front, back: g.back, pin: pin ? m2y(dist(o, pin)) : null, pinSet: !!pin,
+    playsLike: pl.yards, adj: pl.adj, club: rc?.club, alt: rc?.alt, layup: !!rc?.layup, leave: rc ? pl.yards - rc.club.carry : 0,
+    drift: auto && rc && !rc.layup ? windDrift(crossComponent(wx, br), m2y(dist(o, c))) : 0,
     windKnown: auto ? !!(wx && Number.isFinite(wx.speed)) : true, head: cond.head || 0, cross: auto ? crossComponent(wx, br) : 0, gust: auto ? wx?.gust : null,
     elevM: cond.elevM, greenHazards, slope,
   };
@@ -1051,12 +1052,19 @@ function undoEasy() {
 }
 // during a round: the green registers itself when the player stands on a mapped green; the round moves on after the
 // score is in and the player walks off the green
-let greenDwell = null, advancedFrom = null, autoSpoken = null;
+let greenDwell = null, advancedFrom = null, autoSpoken = null, ballSt = null, ballSpoke = null;
 function easyOnFix(acc) {
   if (!roundActive() || !me) return;
   const h = curHole(); if (!h) return;
   // hands-free: the caddie speaks once per hole when the player reaches its tee
   if (state.settings.autoVoice && h.tee && h.center && autoSpoken !== h.key && dist(me, h.tee) < 25 && (acc ?? 99) < 20 && !speaking()) { autoSpoken = h.key; voiceCaddie(); }
+  // at the ball: distance to the pin (or centre), wind and the club, once the player stops there
+  if (state.settings.autoVoiceBall !== false && h.center) {
+    const last = ballSpoke?.key === h.key ? ballSpoke.at : null;
+    const r = atBall(ballSt, me, Date.now(), { pin: holeCenter(h), tee: h.tee, last, acc });
+    ballSt = r.st;
+    if (r.speak && !speaking()) { ballSt = null; ballSpoke = { key: h.key, at: { ...me } }; voiceCaddie(); }
+  }
   if (!h.center && features?.greens?.length) {
     const r = dwellOnGreen(greenDwell, me, Date.now(), features.greens, { acc });
     greenDwell = r.st;

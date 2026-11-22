@@ -41,3 +41,17 @@ export function dwellOnGreen(st, p, t, greens, { sec = 15, maxAcc = 15, acc = 5 
 export function shouldAdvance({ strokes, green, me, hasNext, walkedOff = 50 }) {
   return !!(strokes && green && me && hasNext && dist(me, green) > walkedOff);
 }
+
+/**
+ * Hands-free caddie at the ball: true once the player has stood still for `sec` seconds at a new spot on the hole
+ * (away from the tee, 30–280 y from the pin, and 25 m on from where the caddie last spoke).
+ * st: { anchor, since } kept by the caller; returns { st, speak }
+ */
+export function atBall(st, p, t, { pin, tee, last, acc = 5, sec = 8, maxAcc = 15 } = {}) {
+  if (!pin || !(acc <= maxAcc)) return { st: null, speak: false };
+  const toPin = dist(p, pin);
+  if (toPin < 27 || toPin > 256 || (tee && dist(p, tee) < 30) || (last && dist(p, last) < 25)) return { st: null, speak: false };
+  // still = within 4 m of where the player stopped
+  if (!st?.anchor || dist(st.anchor, p) > 4) return { st: { anchor: p, since: t }, speak: false };
+  return { st, speak: t - st.since >= sec * 1000 };
+}
