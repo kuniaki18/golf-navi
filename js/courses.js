@@ -132,6 +132,7 @@ function choose(c) {
   state.course = { id: c.id, name: c.name, lat: c.lat, lon: c.lon, bounds: c.bounds || null, source: c.source, goraId: c.goraId || null, reserveUrl: c.reserveUrl || null, pref: c.pref || '' };
   state.ui.holeKey = '1';
   save('course');
+  window.dispatchEvent(new CustomEvent('course-chosen-by-hand'));
 }
 
 function onClick(e) {

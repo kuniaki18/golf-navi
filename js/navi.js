@@ -18,6 +18,7 @@ import { dwellOnGreen, shouldAdvance } from './easymap.js';
 import { computeStats } from './analysis.js';
 import { ninesOf, defaultPlan, planHoles, planPars, scRow } from './round.js';
 import { beginRound } from './score.js';
+import { decide } from './autocourse.js';
 import { caddieScript, speak, canSpeak, speaking, stopSpeaking, browserKind, externalBrowserUrl, speechHelp } from './voice.js';
 
 let map, layers, meMarker, accCircle, overlay, mapTiles;
@@ -343,6 +344,8 @@ export function walkedKm(tr = state.current?.track || []) {
 function onFix(pos) {
   gpsError = ''; lastFixAt = Date.now();
   recordTrack({ lat: pos.coords.latitude, lon: pos.coords.longitude }, pos.coords.accuracy);
+  // raw fixes (not the walking filter): this also runs while driving to the course
+  if (!manualMe) detectCourse({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, speed: pos.coords.speed, t: Date.now() });
   if (Number.isFinite(pos.coords.heading) && (pos.coords.speed || 0) > 0.8) gpsHeading = pos.coords.heading;
   const wasMeasuring = !!gps.measure;
   const st = gps.push({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, t: Date.now(), speed: pos.coords.speed });
@@ -352,7 +355,6 @@ function onFix(pos) {
   if (st.mode === 'measuring') return;
   if ($('#autoHole').checked && holes.length) autoHole();
   easyOnFix(pos.coords.accuracy);
-  detectCourse();
   render();
 }
 // refresh the status line every second so the age of the fix is always visible
@@ -437,7 +439,7 @@ export async function loadCourse(force) {
   const c = state.course;
   if (!c) { renderEmpty(); return; }
   // a course was chosen: the 'are you at …?' question from before is no longer needed
-  $('#detectBanner').hidden = true; detected = 'done';
+  if (offered !== c.id) $('#detectBanner').hidden = true;
   if (c.source === 'gora' && !c.osmLinked) {
     try { const o = await matchCourse(c.lat, c.lon); if (o) { Object.assign(c, { bounds: o.bounds, osmId: o.id, osmLinked: true }); save('course'); } } catch {}
   }
@@ -1239,35 +1241,54 @@ function renderQuickScore() {
   if (sv) sv.onclick = () => { window.dispatchEvent(new CustomEvent('goto-tab', { detail: 'score' })); setTimeout(() => $('#btnSaveRound')?.click(), 50); };
 }
 
-// ---------------- auto course detection ----------------
-let detected = null;
-async function detectCourse() {
-  if (!me || detected === 'done' || detected === 'busy') return;
-  if (state.course && dist(me, state.course) < 3000) { detected = 'done'; return; }
-  detected = 'busy';
+// ---------------- course on arrival (also by car) ----------------
+let allCourses = null, offered = null;
+const arrival = {};
+function rejectedToday() {
+  const t = fmtDate(new Date());
+  if (state.ui.courseRejected?.date !== t) state.ui.courseRejected = { date: t, ids: {} };
+  return state.ui.courseRejected.ids;
+}
+function pickCourse(c) {
+  state.course = { id: c.id, name: c.name, lat: c.lat, lon: c.lon, bounds: c.bounds, source: 'osm', pref: c.pref };
+  state.ui.holeKey = '1'; save('course');
+  window.dispatchEvent(new CustomEvent('course-picked'));
+}
+// a course picked by hand while at a club is not overridden by the automatic choice
+window.addEventListener('course-chosen-by-hand', () => { if (me) { state.ui.coursePickHold = { at: Date.now(), lat: me.lat, lon: me.lon }; save('ui'); } });
+let detecting = false;
+async function detectCourse(fix) {
+  if (!(fix.acc <= 100) || detecting) return;
+  detecting = true;
   try {
-    const { bundledCourses } = await import('./osm.js');
-    const all = await bundledCourses();
-    let best = null, bd = Infinity;
-    for (const c of all) {
-      const b = c.bounds;
-      const inside = b && me.lat >= b[0] - 0.002 && me.lat <= b[2] + 0.002 && me.lon >= b[1] - 0.002 && me.lon <= b[3] + 0.002;
-      const d = dist(me, c);
-      if ((inside || d < 900) && d < bd) { bd = d; best = c; }
-    }
-    if (!best) { detected = null; return; }
-    detected = 'done';
-    const bn = $('#detectBanner');
-    bn.hidden = false;
-    bn.innerHTML = `<span>いま <b>${esc(best.name)}</b> にいますか？</span><button class="btn small primary" id="dtYes">このコースでプレー</button><button class="btn small" id="dtNo">ちがう</button>`;
-    $('#dtNo').onclick = () => (bn.hidden = true);
-    $('#dtYes').onclick = () => {
-      bn.hidden = true;
-      state.course = { id: best.id, name: best.name, lat: best.lat, lon: best.lon, bounds: best.bounds, source: 'osm', pref: best.pref };
-      state.ui.holeKey = '1'; save('course');
-      window.dispatchEvent(new CustomEvent('course-picked'));
-    };
-  } catch { detected = null; }
+    if (!allCourses) { const { bundledCourses } = await import('./osm.js'); allCourses = await bundledCourses(); }
+    const r = decide(fix, arrival, { all: allCourses, current: state.course, auto: state.settings.autoCourse !== false, round: roundActive(), rejected: rejectedToday(), hold: state.ui.coursePickHold || null, now: Date.now() });
+    if (!r.action || offered === r.course.id) return;
+    offered = r.course.id;
+    const prev = state.course ? { ...state.course } : null;
+    if (r.action === 'select') { pickCourse(r.course); toast(`近くの ${r.course.name} を選びました`, 3500); }
+    showArrival(r, prev);
+  } catch { /* the course list could not be loaded: try again on the next fix */ allCourses = null; }
+  finally { detecting = false; }
+}
+function showArrival(r, prev) {
+  const bn = $('#detectBanner'), c = r.course, auto = r.action === 'select';
+  const others = r.others.slice(0, 2).map((o, i) => `<button class="btn small" data-alt="${i}">${esc(o.name)}に変更</button>`).join('');
+  bn.hidden = false;
+  bn.innerHTML = auto
+    ? `<span>近くの <b>${esc(c.name)}</b> を自動で選びました</span><button class="btn small primary" data-a="ok">OK</button>${others}<button class="btn small" data-a="no">ちがう（元に戻す）</button><button class="btn small" data-a="list">ほかのコースを選ぶ</button>`
+    : `<span>いま <b>${esc(c.name)}</b> にいますか？${roundActive() ? '（プレー中なので自動では切り替えません）' : ''}</span><button class="btn small primary" data-a="yes">このコースでプレー</button>${others}<button class="btn small" data-a="no">ちがう</button><button class="btn small" data-a="list">ほかのコースを選ぶ</button>`;
+  bn.onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    bn.hidden = true;
+    if (b.dataset.alt != null) { pickCourse(r.others[+b.dataset.alt]); return; }
+    const a = b.dataset.a;
+    if (a === 'yes') pickCourse(c);
+    else if (a === 'no') {
+      rejectedToday()[c.id] = true; save('ui');
+      if (auto) { if (prev) { state.course = prev; save('course'); window.dispatchEvent(new CustomEvent('course-picked')); } else { state.course = null; save('course'); renderEmpty(); } }
+    } else if (a === 'list') { if (auto) { rejectedToday()[c.id] = true; save('ui'); } window.dispatchEvent(new CustomEvent('goto-tab', { detail: 'course' })); }
+  };
 }
 
 // ---------------- today's shots on the hole view ----------------

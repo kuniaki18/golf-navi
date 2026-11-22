@@ -101,6 +101,6 @@ function renderPlans() {
       ${p.lat ? `<button class="btn small" data-play="${esc(JSON.stringify({ id: 'gora-' + p.courseId, name: p.course, lat: Number(p.lat), lon: Number(p.lon), source: 'gora', goraId: p.courseId, reserveUrl: p.url }))}">このコースを選ぶ</button>` : ''}</div>
     </div>`).join('') : '';
   $('#bkPlans').querySelectorAll('[data-share]').forEach((b) => (b.onclick = () => sharePlanToGroup(JSON.parse(b.dataset.share))));
-  $('#bkPlans').querySelectorAll('[data-play]').forEach((b) => (b.onclick = () => { state.course = JSON.parse(b.dataset.play); save('course'); window.dispatchEvent(new CustomEvent('course-picked')); }));
+  $('#bkPlans').querySelectorAll('[data-play]').forEach((b) => (b.onclick = () => { state.course = JSON.parse(b.dataset.play); save('course'); window.dispatchEvent(new CustomEvent('course-chosen-by-hand')); window.dispatchEvent(new CustomEvent('course-picked')); }));
 }
 const lunchLabel = (v) => ({ 0: '昼食なし', 1: '昼食付', '0': '昼食なし', '1': '昼食付' }[v] ?? String(v));

@@ -95,6 +95,8 @@ function initSettings() {
   bind('setRakutenId', 'rakutenId'); bind('setRakutenKey', 'rakutenKey'); bind('setRakutenAff', 'rakutenAff');
   $('#setSun').checked = !!s.sun;
   $('#setSun').onchange = () => setSun($('#setSun').checked);
+  $('#setAutoCourse').checked = s.autoCourse !== false;
+  $('#setAutoCourse').onchange = () => { s.autoCourse = $('#setAutoCourse').checked; save('settings'); };
   $('#setAutoVoice').checked = !!s.autoVoice;
   $('#setAutoVoice').onchange = () => { s.autoVoice = $('#setAutoVoice').checked; save('settings'); };
   $('#setWake').checked = s.wake !== false;
