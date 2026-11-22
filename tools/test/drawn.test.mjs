@@ -81,3 +81,22 @@ test('高坂CC岩殿: all 18 holes drawn from the club map, two greens each', ()
   assert.deepEqual(holes.map((h) => h.no), Array.from({ length: 18 }, (_, i) => i + 1));
   for (const h of holes) assert.ok(h.green, `${h.no} ends on a mapped green`);
 });
+
+test('筑波東急: all 18 holes drawn from the aerial photo and club map, lengths close to the card', () => {
+  const k = JSON.parse(fs.readFileSync(new URL('../../data/c/osm-way-552163907.json', import.meta.url)));
+  const sc = JSON.parse(fs.readFileSync(new URL('../../data/sc/osm-way-552163907.json', import.meta.url)));
+  const holes = buildHoles(parseCompact(k)).filter((h) => h.drawn);
+  assert.deepEqual(holes.map((h) => h.no), Array.from({ length: 18 }, (_, i) => i + 1));
+  for (const h of holes) {
+    assert.ok(h.green, `${h.no} ends on a mapped green`);
+    const r = h.lengthM / 0.9144 / sc.courses[0].holes[h.no - 1].yd;
+    assert.ok(r > 0.85 && r < 1.15, `${h.no}: drawn / card = ${r.toFixed(2)}`);
+  }
+});
+
+test('ピートダイVIP: all 18 holes drawn (greens from the aerial photo, tees from the club map and card length)', () => {
+  const k = JSON.parse(fs.readFileSync(new URL('../../data/c/osm-way-424521804.json', import.meta.url)));
+  const holes = buildHoles(parseCompact(k)).filter((h) => h.drawn);
+  assert.deepEqual(holes.map((h) => h.no), Array.from({ length: 18 }, (_, i) => i + 1));
+  for (const h of holes) assert.ok(h.green, `${h.no} ends on a mapped green`);
+});
