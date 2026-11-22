@@ -100,3 +100,10 @@ test('ピートダイVIP: all 18 holes drawn (greens from the aerial photo, tees
   assert.deepEqual(holes.map((h) => h.no), Array.from({ length: 18 }, (_, i) => i + 1));
   for (const h of holes) assert.ok(h.green, `${h.no} ends on a mapped green`);
 });
+
+test('ピートダイ ロイヤル: all 18 holes drawn (greens from the aerial photo, tees from the club map and card length)', () => {
+  const k = JSON.parse(fs.readFileSync(new URL('../../data/c/osm-way-424520070.json', import.meta.url)));
+  const holes = buildHoles(parseCompact(k)).filter((h) => h.drawn);
+  assert.deepEqual(holes.map((h) => h.no), Array.from({ length: 18 }, (_, i) => i + 1));
+  for (const h of holes) assert.ok(h.green, `${h.no} ends on a mapped green`);
+});

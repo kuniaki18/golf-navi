@@ -1,5 +1,5 @@
 // Offline support: app shell cached, map tiles cached as you browse (so the course map works with weak signal).
-const VERSION = 'v2.45.0';
+const VERSION = 'v2.46.0';
 const SHELL = `shell-${VERSION}`;
 const TILES = 'tiles-v1';
 const FILES = [
