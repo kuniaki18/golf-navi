@@ -86,6 +86,21 @@
     <div class="yd-side"><span class="yd-label">奥</span><span class="yd-num" id="ydBack">---</span></div>
     <div class="yd-pin" id="ydPin" hidden><span class="yd-label">今日のピン</span><b id="ydPinNum">---</b></div>
   </div>
+  <div class="pin-pick" id="pinPick" hidden>
+    <div class="pin-head"><span>今日のピン位置</span><small id="pinPickNow">未設定（センターで計算）</small></div>
+    <div class="pin-body">
+      <div class="pin-grid" id="pinGrid" role="group" aria-label="ピン位置を選ぶ（上が奥）">
+        <button data-p="1,-1">奥左</button><button data-p="1,0">奥</button><button data-p="1,1">奥右</button>
+        <button data-p="0,-1">左</button><button data-p="0,0">センター</button><button data-p="0,1">右</button>
+        <button data-p="-1,-1">手前左</button><button data-p="-1,0">手前</button><button data-p="-1,1">手前右</button>
+      </div>
+      <div class="pin-acts">
+        <button class="btn small" id="btnPinAll" disabled>全ホールに適用</button>
+        <button class="btn small" id="btnPinOff">解除</button>
+        <small class="muted">グリーン表示で地図をタップすると細かく指定できます</small>
+      </div>
+    </div>
+  </div>
   <button class="btn primary voice-btn" id="btnVoice" aria-label="音声キャディ：残り距離・風・番手・攻め方を読み上げ"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg><span>音声キャディ</span><small>距離・風・番手・攻め方</small></button>
   <p class="voice-text" id="voiceText" hidden></p>
   <div class="voice-help" id="voiceHelp" role="alert" hidden></div>

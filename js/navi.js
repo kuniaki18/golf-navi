@@ -9,7 +9,7 @@ import { askClaude, COACH_SYSTEM, hasAI, needAI } from './ai.js';
 import { HoleView, IMAGERY, setImagery } from './holeview.js';
 import { analyzeGreen, readPutt, greenCondition } from './greenslope.js';
 import { GpsFilter } from './gpsfilter.js';
-import { greenDistances as greenDist, greenKey } from './geo.js';
+import { greenDistances as greenDist, greenKey, pinPreset } from './geo.js';
 import { submitHole, communityHoles, communityDoc, submitScorecard } from './community.js';
 import { dataQuality, checkScorecard } from './coursedata.js';
 import { learnHoles } from './learn.js';
@@ -44,6 +44,25 @@ function todayPins() {
   if (state.todayPins?.date !== t) state.todayPins = { date: t, c: {} };
   return (state.todayPins.c[cid()] ??= {});
 }
+const PIN_NAMES = { '1,-1': '奥左', '1,0': '奥', '1,1': '奥右', '0,-1': '左', '0,0': 'センター', '0,1': '右', '-1,-1': '手前左', '-1,0': '手前', '-1,1': '手前右' };
+/** where the approach comes from: the last bend of the hole line, else the tee */
+const approachFrom = (h) => (h.line?.length >= 2 ? h.line[h.line.length - 2] : h.tee) || me;
+/** a pin from the 3x3 picker ("row,col"), placed on this hole's green as seen from the approach */
+function presetPin(h, p) {
+  if (!h?.center) return null;
+  const [r, c] = p.split(',').map(Number);
+  const ll = pinPreset(h.green, h.center, approachFrom(h), r, c);
+  return ll && { lat: ll.lat, lon: ll.lon, p };
+}
+function renderPinPick(h) {
+  const box = $('#pinPick'); box.hidden = !h?.center || !cid();
+  if (box.hidden) return;
+  const pin = todayPins()[h.key];
+  $('#pinPickNow').textContent = !pin ? '未設定（センターで計算）' : pin.p ? PIN_NAMES[pin.p] : '地図で指定';
+  $('#pinGrid button').forEach((b) => b.classList.toggle('on', !!pin && pin.p === b.dataset.p));
+  $('#btnPinAll').disabled = !pin?.p;
+  $('#btnPinOff').disabled = !pin;
+}
 
 export function initNavi() {
   setImagery(state.settings.imagery || 'gsi');
@@ -76,6 +95,17 @@ export function initNavi() {
   $('#holePrev').onclick = () => gotoHole(holeIdx - 1, true);
   $('#holeNext').onclick = () => gotoHole(holeIdx + 1, true);
   $('#btnLocate').onclick = () => { manualMe = false; gps.reset(); startGPS(); hv.resetView(); if (me && map) map.setView([me.lat, me.lon], 17); };
+  $('#pinGrid').onclick = (e) => {
+    const b = e.target.closest('[data-p]'); const h = curHole(); if (!b || !h) return;
+    const pin = presetPin(h, b.dataset.p); if (!pin) return;
+    todayPins()[h.key] = pin; save('pin'); toast(`${h.dispNo ?? h.no}番のピン：${PIN_NAMES[pin.p]}`); render();
+  };
+  $('#btnPinAll').onclick = () => {
+    const p = todayPins()[curHole()?.key]?.p; if (!p) return;
+    let n = 0; for (const x of holes) { const pin = presetPin(x, p); if (pin) { todayPins()[x.key] = pin; n++; } }
+    save('pin'); toast(`${n}ホールのピンを「${PIN_NAMES[p]}」にしました（ホールごとに変更できます）`, 3200); render();
+  };
+  $('#btnPinOff').onclick = () => { const h = curHole(); if (h) { delete todayPins()[h.key]; save('pin'); render(); } };
   $('#btnPinClear').onclick = () => { const h = curHole(); if (h) { delete todayPins()[h.key]; save('pin'); render(); } };
   ['lie', 'windMode', 'elevManual'].forEach((id) => $('#' + id).addEventListener('input', renderAdvice));
   $('#btnShot').onclick = recordShot;
@@ -588,6 +618,7 @@ function render() {
   const h = curHole();
   const c = holeCenter(h);
   const pin = h && cid() ? todayPins()[h.key] : null;
+  renderPinPick(h);
   const draft = h && !h.center ? userHoles()[h.key] : null;
   const prevGreen = holes[holeIdx - 1]?.center;
   const area = !state.course ? null : me && dist(me, state.course) < 2500 ? me : draft?.tee || prevGreen || { lat: state.course.lat, lon: state.course.lon };
@@ -622,6 +653,7 @@ function render() {
   $('#ydUnit').textContent = unit() === 'm' ? 'm' : 'yd';
   $('#ydPin').hidden = !pin;
   if (pin) $('#ydPinNum').textContent = fmt(m2y(dist(o, pin)));
+  $('#ydPin .yd-label').textContent = pin?.p ? `ピン（${PIN_NAMES[pin.p]}）` : '今日のピン';
 
   if (strat?.hazards?.length) {
     const hz = hazardDistancesFrom(o, strat.hazards, c).slice(0, 6);

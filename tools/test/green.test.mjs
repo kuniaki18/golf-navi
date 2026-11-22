@@ -82,3 +82,18 @@ test('27-hole club whose pieces merge into one chain: hole sets build without th
   assert.ok(out.length > 0);
   assert.ok(out.every((h) => Number.isInteger(h.set)));
 });
+
+test('pin presets: front/back and left/right as seen from the player', async () => {
+  const { pinPreset } = await import('../../js/geo.js');
+  const { xy } = await import('../../js/util.js');
+  const g = { pts: square(0, 0, 15) }; g.c = centroid(g.pts.slice(0, 4));
+  const from = at(0, -150); // playing north
+  const p = (r, c) => xy(g.c, pinPreset(g, g.c, from, r, c));
+  assert.ok(Math.abs(p(-1, 0).y + 9) < 0.5 && Math.abs(p(-1, 0).x) < 0.5); // front = toward the player
+  assert.ok(Math.abs(p(1, 0).y - 9) < 0.5);
+  assert.ok(p(0, 1).x > 8 && p(0, -1).x < -8); // right = east when facing north
+  assert.ok(dist(pinPreset(g, g.c, from, 0, 0), g.c) < 0.5);
+  // no outline: a typical green is assumed
+  const q = xy(g.c, pinPreset(null, g.c, from, 1, -1));
+  assert.ok(q.y > 7 && q.x < -6);
+});
